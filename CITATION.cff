@@ -1,0 +1,27 @@
+# Confirm before the first release: affiliation, ORCID, and the co-author list.
+# Once the repo is pushed and the Zenodo integration is switched on, Zenodo mints
+# a DOI on each GitHub release — add it under `doi:` and to the README badge.
+cff-version: 1.2.0
+message: "If you use FluLens in published work, please cite it as below."
+title: FluLens
+abstract: >-
+  A viewer and reviewer for influenza variant calls produced by the Flumina
+  pipeline. Displays a run as samples by codons, one cell per call, coloured by
+  allele frequency, with per-variant read-level evidence, strand-bias
+  assessment, FluMut marker screening and selection results.
+type: software
+authors:
+  - family-names: Hutter
+    given-names: Carl R.
+    email: carl.hutter@gmail.com
+repository-code: "https://github.com/flu-crew/FluLens"
+url: "https://flu-crew.github.io/FluLens/"
+license: GPL-3.0-or-later
+version: 1.0.0
+date-released: 2026-08-03
+keywords:
+  - influenza
+  - variant calling
+  - low-frequency variants
+  - genomic surveillance
+  - visualisation

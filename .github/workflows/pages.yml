@@ -1,0 +1,62 @@
+# Publishes the browser build to GitHub Pages.
+#
+# Two things land on the site:
+#   /                      the app, empty, waiting for you to pick your own run
+#   /?run=example_run      the same app auto-loaded with the synthetic example
+#
+# One copy of the HTML serves both — the app reads a `?run=` parameter. The
+# example needs manifest.json because Pages serves no directory index; see
+# tools/make_manifest.py for why that matters.
+name: Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'prototypes/flulens.html'
+      - 'example_run/**'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Assemble site
+        run: |
+          mkdir -p _site
+          cp prototypes/flulens.html _site/index.html
+          cp -R example_run _site/example_run
+          rm -f _site/example_run/README.md
+          python3 tools/make_manifest.py _site/example_run
+          # Also offer the single file as a download, so someone who wants it
+          # offline does not have to clone the repository.
+          cp prototypes/flulens.html _site/flulens.html
+
+      # enablement: true switches Pages on for the repository rather than failing
+      # when it is off. Without it the first run dies with "Get Pages site failed …
+      # verify that the repository has Pages enabled", which reads like a broken
+      # workflow instead of a one-time setting. It cannot rescue a PRIVATE repo on
+      # a free plan, though — Pages is unavailable there at any setting.
+      - uses: actions/configure-pages@v5
+        with:
+          enablement: true
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deploy
+        uses: actions/deploy-pages@v4

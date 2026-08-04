@@ -1,0 +1,10 @@
+#gtf-version 2.2
+A_PB1	.	gene	1	2274	.	+	.	gene_id "PB1"; transcript_id ""; gbkey "Gene"; gene "PB1"; gene_biotype "protein_coding"
+A_PB1	.	CDS	1	2271	.	+	0	gene_id "PB1"; transcript_id "unassigned_transcript_1"; gbkey "CDS"; gene "PB1"; product "polymerase PB1"; exon_number "1"
+A_PB1	.	start_codon	1	3	.	+	0	gene_id "PB1"; transcript_id "unassigned_transcript_1"; gbkey "CDS"; gene "PB1"; product "polymerase PB1"; exon_number "1"
+A_PB1	.	stop_codon	2272	2274	.	+	0	gene_id "PB1"; transcript_id "unassigned_transcript_1"; gbkey "CDS"; gene "PB1"; product "polymerase PB1"; exon_number "1"
+A_PB1	.	gene	95	367	.	+	.	gene_id "PB1-F2"; transcript_id ""; gbkey "Gene"; gene "PB1-F2"; gene_biotype "protein_coding"
+A_PB1	.	CDS	95	364	.	+	0	gene_id "PB1-F2"; transcript_id "unassigned_transcript_2"; gbkey "CDS"; gene "PB1-F2"; product "PB1-F2 protein"; exon_number "1"
+A_PB1	.	start_codon	95	97	.	+	0	gene_id "PB1-F2"; transcript_id "unassigned_transcript_2"; gbkey "CDS"; gene "PB1-F2"; product "PB1-F2 protein"; exon_number "1"
+A_PB1	.	stop_codon	365	367	.	+	0	gene_id "PB1-F2"; transcript_id "unassigned_transcript_2"; gbkey "CDS"; gene "PB1-F2"; product "PB1-F2 protein"; exon_number "1"
+###
