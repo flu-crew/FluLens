@@ -1,0 +1,51 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "FluLens",
+  "version": "1.0.0",
+  "identifier": "org.flu-crew.flulens",
+  "build": {
+    "frontendDist": "dist",
+    "beforeBuildCommand": "mkdir -p desktop/dist && cp prototypes/flulens.html desktop/dist/"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "FluLens",
+        "url": "flulens.html",
+        "width": 1600,
+        "height": 1000,
+        "minWidth": 900,
+        "minHeight": 600
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns"
+    ],
+    "publisher": "flu-crew",
+    "homepage": "https://github.com/flu-crew/FluLens",
+    "category": "Education",
+    "shortDescription": "A reviewer for Flumina influenza variant calls",
+    "longDescription": "FluLens displays a Flumina run as samples by codons, one cell per variant call, coloured by allele frequency. It reads the run directory directly and everything stays on your machine.",
+    "license": "GPL-3.0-or-later",
+    "createUpdaterArtifacts": false,
+    "macOS": {
+      "minimumSystemVersion": "10.15",
+      "hardenedRuntime": true,
+      "dmg": {
+        "windowSize": { "width": 660, "height": 400 },
+        "appPosition": { "x": 180, "y": 180 },
+        "applicationFolderPosition": { "x": 480, "y": 180 }
+      }
+    }
+  }
+}

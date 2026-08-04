@@ -1,0 +1,130 @@
+# Builds the desktop app for macOS, Windows and Linux on a version tag, and
+# attaches everything to a draft GitHub release.
+#
+# macOS is built as a UNIVERSAL binary — the default is host-arch only, which
+# would leave Intel Mac users with nothing.
+#
+# Signing and notarisation happen only if the Apple secrets are set. Without
+# them the build still succeeds and produces an UNSIGNED app, which macOS will
+# refuse to open on first launch without the user going through System Settings.
+# See RELEASING.md.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+jobs:
+  desktop:
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-latest
+            args: '--target universal-apple-darwin'
+            rust-targets: 'aarch64-apple-darwin,x86_64-apple-darwin'
+          - platform: ubuntu-22.04
+            args: ''
+            rust-targets: ''
+          - platform: windows-latest
+            args: ''
+            rust-targets: ''
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust-targets }}
+
+      # webkit2gtk is the Linux webview Tauri renders into; the rest are what
+      # the bundler needs to produce .deb and .AppImage.
+      - name: Linux build dependencies
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev \
+            librsvg2-dev patchelf build-essential curl wget file libssl-dev \
+            libgtk-3-dev libayatana-appindicator3-dev
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './desktop -> target'
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Set these in repository secrets to get a signed, notarised .app.
+          # Absent, the build is unsigned and Gatekeeper will block it.
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        with:
+          projectPath: ./desktop
+          tagName: ${{ github.ref_name }}
+          releaseName: 'FluLens ${{ github.ref_name }}'
+          releaseDraft: true
+          prerelease: false
+          args: ${{ matrix.args }}
+
+      # Tauri notarises the .app and then builds the DMG from it, so the DMG
+      # itself goes out signed but UNNOTARISED. A downloaded disk image is
+      # quarantined and Gatekeeper checks the image, not just the app inside —
+      # so without this the user still gets the warning we signed to avoid.
+      # Verified locally: the app reports "Notarized Developer ID" while the
+      # DMG reports "Unnotarized Developer ID, rejected" until this runs.
+      - name: Notarise and staple the DMG
+        if: matrix.platform == 'macos-latest' && env.APPLE_ID != ''
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          for dmg in desktop/target/universal-apple-darwin/release/bundle/dmg/*.dmg; do
+            echo "notarising $dmg"
+            xcrun notarytool submit "$dmg" --apple-id "$APPLE_ID" \
+              --team-id "$APPLE_TEAM_ID" --password "$APPLE_PASSWORD" --wait
+            xcrun stapler staple "$dmg"
+            spctl -a -vvv -t open --context context:primary-signature "$dmg"
+            echo "STAPLED_DMG=$dmg" >> "$GITHUB_ENV"
+          done
+
+      # Replace the asset tauri-action already uploaded with the stapled copy.
+      # Same filename, so this overwrites rather than adding a second DMG.
+      - name: Re-upload the stapled DMG
+        if: matrix.platform == 'macos-latest' && env.STAPLED_DMG != ''
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          tag_name: ${{ github.ref_name }}
+          files: ${{ env.STAPLED_DMG }}
+
+  # The single HTML file is a first-class way to run FluLens, so it belongs on
+  # the release page next to the installers rather than only in the repository.
+  browser-build:
+    needs: desktop
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Package the example run
+        run: |
+          cp prototypes/flulens.html flulens.html
+          zip -r example_run.zip example_run -x '*.DS_Store'
+      - uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          tag_name: ${{ github.ref_name }}
+          files: |
+            flulens.html
+            example_run.zip

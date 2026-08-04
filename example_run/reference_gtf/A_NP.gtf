@@ -1,0 +1,6 @@
+#gtf-version 2.2
+A_NP	.	gene	1	1497	.	+	.	gene_id "NP"; transcript_id ""; gbkey "Gene"; gene "NP"; gene_biotype "protein_coding"
+A_NP	.	CDS	1	1494	.	+	0	gene_id "NP"; transcript_id "unassigned_transcript_1"; gbkey "CDS"; gene "NP"; product "nucleocapsid protein"; exon_number "1"
+A_NP	.	start_codon	1	3	.	+	0	gene_id "NP"; transcript_id "unassigned_transcript_1"; gbkey "CDS"; gene "NP"; product "nucleocapsid protein"; exon_number "1"
+A_NP	.	stop_codon	1495	1497	.	+	0	gene_id "NP"; transcript_id "unassigned_transcript_1"; gbkey "CDS"; gene "NP"; product "nucleocapsid protein"; exon_number "1"
+###

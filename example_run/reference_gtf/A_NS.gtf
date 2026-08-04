@@ -1,0 +1,11 @@
+#gtf-version 2.2
+A_NS	.	gene	1	838	.	+	.	gene_id "NEP"; transcript_id ""; gbkey "Gene"; gene "NEP"; gene_biotype "protein_coding"; gene_synonym "NS2"
+A_NS	.	CDS	1	30	.	+	0	gene_id "NEP"; transcript_id "unassigned_transcript_1"; gbkey "CDS"; gene "NEP"; note "nonstructural protein 2"; part "1"; product "nuclear export protein"; exon_number "1"
+A_NS	.	CDS	503	835	.	+	0	gene_id "NEP"; transcript_id "unassigned_transcript_1"; gbkey "CDS"; gene "NEP"; note "nonstructural protein 2"; part "2"; product "nuclear export protein"; exon_number "2"
+A_NS	.	start_codon	1	3	.	+	0	gene_id "NEP"; transcript_id "unassigned_transcript_1"; gbkey "CDS"; gene "NEP"; note "nonstructural protein 2"; product "nuclear export protein"; exon_number "1"
+A_NS	.	stop_codon	836	838	.	+	0	gene_id "NEP"; transcript_id "unassigned_transcript_1"; gbkey "CDS"; gene "NEP"; note "nonstructural protein 2"; product "nuclear export protein"; exon_number "2"
+A_NS	.	gene	1	693	.	+	.	gene_id "NS1"; transcript_id ""; gbkey "Gene"; gene "NS1"; gene_biotype "protein_coding"
+A_NS	.	CDS	1	690	.	+	0	gene_id "NS1"; transcript_id "unassigned_transcript_2"; gbkey "CDS"; gene "NS1"; product "nonstructural protein 1"; exon_number "1"
+A_NS	.	start_codon	1	3	.	+	0	gene_id "NS1"; transcript_id "unassigned_transcript_2"; gbkey "CDS"; gene "NS1"; product "nonstructural protein 1"; exon_number "1"
+A_NS	.	stop_codon	691	693	.	+	0	gene_id "NS1"; transcript_id "unassigned_transcript_2"; gbkey "CDS"; gene "NS1"; product "nonstructural protein 1"; exon_number "1"
+###
