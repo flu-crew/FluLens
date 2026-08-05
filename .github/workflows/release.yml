@@ -7,7 +7,7 @@
 # Signing and notarisation happen only if the Apple secrets are set. Without
 # them the build still succeeds and produces an UNSIGNED app, which macOS will
 # refuse to open on first launch without the user going through System Settings.
-# See RELEASING.md.
+# See docs/RELEASING.md.
 name: Release
 
 on:

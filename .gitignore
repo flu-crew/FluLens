@@ -24,8 +24,8 @@ example_run/manifest.json
 /example_run.zip
 
 # Development symlinks into local research data. These point at real study runs
-# and metadata spreadsheets on the author's machine. See CONTRIBUTING.md — create
-# them locally, never commit them.
+# and metadata spreadsheets on the author's machine. See docs/CONTRIBUTING.md —
+# create them locally, never commit them.
 prototypes/run
 prototypes/meta.csv
 
@@ -65,5 +65,3 @@ __pycache__/
 *.p12
 *.p8
 *.certSigningRequest
-CONTRIBUTING.md
-RELEASING.md

@@ -225,9 +225,14 @@ cd desktop && cargo tauri build --target universal-apple-darwin
 > changes nothing the desktop app displays until you rebuild. This is the single
 > most common way to lose an hour here.
 
-See [`desktop/README.md`](desktop/README.md) for the shell's design, and
-[`.github/workflows/release.yml`](.github/workflows/release.yml) for how releases
-are built, signed and notarised on all three platforms.
+Further reading, all of it maintainer-facing:
+
+- [`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md) — how the two run loaders work,
+  regenerating the example, and the things that reliably cost people an hour
+- [`docs/RELEASING.md`](docs/RELEASING.md) — signing, notarisation and cutting a
+  release. Read the DMG section before shipping one: Tauri notarises the app but
+  not the disk image, so a green build can still produce a download macOS blocks
+- [`desktop/README.md`](desktop/README.md) — the Tauri shell's design
 
 ---
 
