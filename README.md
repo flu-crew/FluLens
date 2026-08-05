@@ -1,4 +1,4 @@
-# FluLens
+![FluLens — influenza variant visualizer](docs/img/banner.png)
 
 A reviewer for influenza variant calls — **samples × codons**, one cell per call,
 coloured by allele frequency.
@@ -225,8 +225,9 @@ cd desktop && cargo tauri build --target universal-apple-darwin
 > changes nothing the desktop app displays until you rebuild. This is the single
 > most common way to lose an hour here.
 
-See [`desktop/README.md`](desktop/README.md) for the shell's design and
-[`RELEASING.md`](RELEASING.md) for signing, notarisation and the release workflow.
+See [`desktop/README.md`](desktop/README.md) for the shell's design, and
+[`.github/workflows/release.yml`](.github/workflows/release.yml) for how releases
+are built, signed and notarised on all three platforms.
 
 ---
 
