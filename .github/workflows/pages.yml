@@ -9,13 +9,15 @@
 # tools/make_manifest.py for why that matters.
 name: Pages
 
+# Deliberately NOT path-filtered. A `paths:` list looks like an optimisation and
+# behaves like a trap: on a force-push GitHub evaluates it against a `before`
+# commit that is no longer in the history, and the run is silently skipped. Three
+# pushes in a row deployed nothing that way, and the only symptom was the live
+# site quietly serving an older build — which reads as a broken app, not a
+# missing deploy. The whole site is one HTML file; the run takes about 30 s.
 on:
   push:
     branches: [main]
-    paths:
-      - 'prototypes/flulens.html'
-      - 'example_run/**'
-      - '.github/workflows/pages.yml'
   workflow_dispatch:
 
 permissions:
