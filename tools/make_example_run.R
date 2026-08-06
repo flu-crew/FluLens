@@ -345,6 +345,8 @@ cat("wrote", nrow(samples), "LoFreq VCFs\n")
 # every cell is the same shade demonstrates nothing. NS is the weak segment here,
 # and A4 is missing two segments outright so the "absent" outline is reachable.
 
+counts.by.sample <- list()   # so the coverage tables below agree with these
+
 for (i in seq_len(nrow(samples))) {
   sm <- samples$sample[i]; ds <- depth.scale[[samples$Animal[i]]]
   d <- file.path(OUT, "IRMA_results", sm, "tables")
@@ -354,6 +356,7 @@ for (i in seq_len(nrow(samples))) {
   cnt <- round(rlnorm(8, log(90000), 0.7) * ds * bias[segs])
   names(cnt) <- segs
   if (sm %in% c("A4_D5", "A4_D3")) cnt[c("A_NS", "A_NA")] <- 0   # absent segments
+  counts.by.sample[[sm]] <- cnt
   tot <- sum(cnt)
   ln <- c("Record\tReads\tPatterns\tPairsAndWidows",
           sprintf("1-initial\t%d\tNA\tNA", round(tot * 1.4)),
@@ -366,6 +369,51 @@ for (i in seq_len(nrow(samples))) {
   writeLines(ln, file.path(d, "READ_COUNTS.txt"))
 }
 cat("wrote", nrow(samples), "READ_COUNTS.txt\n")
+
+#############################################
+#### IRMA per-base coverage
+#
+# tables/<SEGMENT>-coverage.txt, one row per reference base. This is what
+# FluLens draws when a sample row is opened, and it is the only per-base depth
+# available without a BAM.
+#
+# Deliberately written LAST. Everything above draws from the same seeded stream,
+# so adding a generator earlier in the file would shift every number in the
+# variant table and the VCFs; appending here leaves them byte-identical.
+#
+# Shape matters more than the absolute numbers: flat coverage would make the
+# panel pointless. Each segment gets tapered ends, where real amplicon and
+# assembly coverage always falls off, plus a couple of smooth interior dips.
+
+for (i in seq_len(nrow(samples))) {
+  sm <- samples$sample[i]; ds <- depth.scale[[samples$Animal[i]]]
+  cnt <- counts.by.sample[[sm]]
+  d <- file.path(OUT, "IRMA_results", sm, "tables")
+  for (s in segs) {
+    if (cnt[[s]] <= 0) next          # segment never assembled — no table at all
+    n <- nchar(ref[[s]])
+    # Centre the profile on the depth the variant table reports for this animal,
+    # so the two agree rather than telling different stories about one library.
+    mu <- 4200 * ds * (0.6 + 0.8 * (cnt[[s]] / max(cnt)))
+    x <- seq_len(n) / n
+    taper <- pmin(1, pmin(x, 1 - x) / 0.06)          # ends ramp up over ~6%
+    wob <- 1 + 0.22 * sin(2 * pi * x * 3 + runif(1, 0, 6)) +
+               0.14 * sin(2 * pi * x * 7 + runif(1, 0, 6))
+    dep <- pmax(0, round(mu * taper * wob * rlnorm(n, 0, 0.06)))
+    base <- strsplit(ref[[s]], "")[[1]]
+    writeLines(c(
+      paste("Reference_Name", "Position", "Coverage Depth", "Consensus",
+            "Deletions", "Ambiguous", "Consensus_Count",
+            "Consensus_Average_Quality", sep = "\t"),
+      # One decimal on the quality. IRMA writes full float precision; carrying
+      # fifteen digits of a number nothing reads costs ~0.5 MB across the example
+      # for no information.
+      sprintf("%s\t%d\t%d\t%s\t0\t0\t%d\t%.1f", s, seq_len(n), dep, base,
+              dep, runif(n, 34, 38))),
+      file.path(d, paste0(s, "-coverage.txt")))
+  }
+}
+cat("wrote per-base coverage tables\n")
 
 #############################################
 #### Reference and GTF
