@@ -55,6 +55,12 @@ Each of these is a control that would sit dead in a demo built from arbitrary da
   caution* in the trust panel.
 - **Recurrent sites**, so the matrix shows columns of calls rather than a field of
   singletons.
+- **Per-base depth**, in `IRMA_results/<sample>/tables/<SEGMENT>-coverage.txt` —
+  what the depth profile draws when a row is opened in the consensus view. Ends
+  taper and the interior wobbles, because a flat profile would make that panel
+  pointless. A4's two unassembled segments have no coverage table at all, exactly
+  as IRMA would leave them. These tables are 4.6 MB of the 5.1 MB here; delete
+  them if you only need the variant grid.
 
 ## What it does not include
 

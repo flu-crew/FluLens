@@ -85,7 +85,11 @@
      :first-child deliberately excludes .val, which is the right-hand readout. */
   .fld > span:first-child{width:94px;flex:none}
   .fld input[type=range]{flex:1;accent-color:var(--accent);min-width:0}
-  .fld .val{font:11px ui-monospace,monospace;color:var(--muted);min-width:50px;text-align:right}
+  /* Wide enough for the longest readout any of these sliders produces ("2000",
+     "100%") and no wider. At 50px a three-digit value left ~30px of dead space
+     between the slider and its own number, which read as the slider failing to
+     reach its label. Right-aligned so the readouts still form a clean column. */
+  .fld .val{font:11px ui-monospace,monospace;color:var(--muted);min-width:32px;text-align:right}
   .fld label{display:flex;align-items:center;gap:6px;cursor:pointer}
   /* Modal. Click-outside and Escape both dismiss — a dialog offering only a
      Cancel button is one people feel trapped by. */
@@ -239,12 +243,14 @@
      painted right across their width, so a second overlay there lands on top of
      drawn content at some window sizes and not others. */
   #modeR{position:static}
-  #dtoggle{position:absolute;right:0;top:50%;transform:translateY(-50%);
-    z-index:7;width:15px;height:52px;padding:0;border-radius:7px 0 0 7px;
-    border-right:none;font:11px system-ui;color:var(--muted);
-    display:flex;align-items:center;justify-content:center}
-  #dtoggle:hover{color:var(--text)}
+  #dtoggle,#stoggle{position:absolute;top:50%;transform:translateY(-50%);
+    z-index:7;width:15px;height:52px;padding:0;font:11px system-ui;
+    color:var(--muted);display:flex;align-items:center;justify-content:center}
+  #dtoggle{right:0;border-radius:7px 0 0 7px;border-right:none}
+  #stoggle{left:0;border-radius:0 7px 7px 0;border-left:none}
+  #dtoggle:hover,#stoggle:hover{color:var(--text)}
   aside#detail.collapsed{width:0;border-left:none;overflow:hidden}
+  aside#side.collapsed{width:0;border-right:none;overflow:hidden}
 </style>
 </head>
 <body>
@@ -263,7 +269,7 @@
       <circle cx="8.07"  cy="6.25"  r="1.05" fill="var(--logo-knob)"/>
       <circle cx="11.35" cy="5.68"  r="1.05" fill="var(--logo-knob)"/>
       <circle cx="14.25" cy="7.35"  r="1.05" fill="var(--logo-knob)"/>
-    </svg>FluLens <small>influenza variant viewer</small></div>
+    </svg>FluLens <small>influenza variant visualizer</small></div>
   <!-- Empty until there is something to report. It used to open with "open a
        Flumina results folder", which restated the button directly beneath it;
        once a run loads this becomes the run's own stat line. -->
@@ -456,6 +462,7 @@ click the ✓/✕ to override by hand</div>
       <div id="loadbar"><i></i></div>
       <div id="loadphase"></div>
     </div>
+    <button id="stoggle" title="Hide / show the sidebar">‹</button>
     <button id="dtoggle" title="Hide / show the detail panel">›</button>
     <!-- Same control in two places: over the names header, and at the right of
          the reference row. Whichever one the eye is near is the one to hit. -->
@@ -703,6 +710,11 @@ let stats={}, ready=false, extentSource='';
 // Which reference_gtf directory readGTF settled on, and a note when there was
 // more than one to choose from — the reader has to be told, exactly as with VCFs.
 let gtfDir='', gtfDirNote='';
+/* The parsed CDS map, kept module-level so the depth track can map a codon back
+   to its nucleotides. readGTF's result was previously a local in the loader,
+   which is fine for building the reference row once and useless afterwards.
+   Declared HERE with the rest of the state, not beside its first use. */
+let gtfCDS=null;
 let vcfCache=new Map();     // sample -> Map("locus:pos" -> info)
 let refProt=null;
 let rawLoci=[];   // reference FASTA names, unshortened, for subtype checks           // product -> translated reference protein
@@ -1488,6 +1500,136 @@ function pumpSeg(){
 }
 const segRecovered=rec=>{ let n=0; if(rec) for(const [,v] of rec.byLoc) if(v>0) n++; return n; };
 
+/* ---- per-base depth, from IRMA's coverage tables ---------------------------
+   IRMA writes tables/<SEGMENT>-coverage.txt with one row per reference base:
+
+     Reference_Name  Position  Coverage Depth  Consensus  Deletions  ...
+
+   That is a depth profile for free, without a BAM. READ_COUNTS gives one number
+   per segment, which cannot show that a segment assembled well at its ends and
+   collapsed in the middle — the shape that actually explains a missing call.
+
+   Lazy and throttled exactly like the read counts and the VCFs: a run is one
+   file per segment per sample, and nothing needs them until a row is opened. */
+let covCache=new Map();          // sample -> {byLoc:Map(shortLocus -> Int32Array), max} | null
+const covWanted=new Set();
+let covQueue=[], covBusy=0;
+
+/* Same rule as findVCF and findReadCounts — match the leaf anywhere in the
+   index rather than hardcoding IRMA_results/, so a differently-named run
+   directory still resolves. */
+function findCoverageFiles(sample){
+  const out=[], leaf=`/${sample}/tables/`;
+  for(const [p,f] of files)
+    if(p.includes(leaf) && p.endsWith('-coverage.txt')) out.push([p,f]);
+  return out;
+}
+async function loadCoverage(sample){
+  if(covCache.has(sample)) return covCache.get(sample);
+  const found=findCoverageFiles(sample);
+  if(!found.length){ covCache.set(sample,null); return null; }
+  const rec={byLoc:new Map(), max:0};
+  for(const [,f] of found){
+    try{
+      const txt=await f.text();
+      const lines=txt.split(/\r?\n/);
+      // Header names vary in case and spacing between IRMA versions; find the
+      // depth column by name rather than trusting it to be the third field.
+      const head=lines[0].split('\t').map(s=>s.trim().toLowerCase());
+      let iPos=head.indexOf('position');
+      let iDep=head.findIndex(h=>h.includes('coverage')&&h.includes('depth'));
+      if(iPos<0) iPos=1; if(iDep<0) iDep=2;
+      let loc=null, arr=[];
+      for(let i=1;i<lines.length;i++){
+        const c=lines[i].split('\t'); if(c.length<=iDep) continue;
+        if(loc===null) loc=shortLocus(c[0]);
+        const p=+c[iPos], d=+c[iDep];
+        if(!isFinite(p)||p<1) continue;
+        arr[p]=isFinite(d)?d:0;
+        if(d>rec.max) rec.max=d;
+      }
+      if(loc!==null){
+        const a=new Int32Array(arr.length);
+        for(let i=0;i<arr.length;i++) a[i]=arr[i]||0;
+        rec.byLoc.set(loc,a);
+      }
+    }catch(e){ /* one unreadable segment must not lose the others */ }
+  }
+  covCache.set(sample, rec.byLoc.size?rec:null);
+  return covCache.get(sample);
+}
+function wantCoverage(sample){
+  if(covCache.has(sample)||covWanted.has(sample)) return;
+  covWanted.add(sample); covQueue.push(sample); pumpCov();
+}
+function pumpCov(){
+  while(covBusy<4 && covQueue.length){
+    const s=covQueue.shift(); covBusy++;
+    loadCoverage(s).finally(()=>{ covBusy--; schedule(); pumpCov(); });
+  }
+}
+
+/* Segment nucleotide positions for one codon of one product. Walks the product's
+   own exons, so M2, NEP and PA-X map across their splice junctions instead of
+   being read as contiguous — the same reason fluORFs.R exists on the pipeline
+   side. Returns [] when the GTF has not loaded or the product is unknown. */
+/* The depth profile for one sample across the visible codon range.
+
+   Linear, not log. The question an opened row is asking is "where did coverage
+   fall away", and a log axis flattens precisely the drop being looked for.
+   Scaled to the sample's own maximum rather than to the visible window, so the
+   shape stays comparable while panning instead of renormalising under the
+   cursor. Depth is averaged over the codon's three bases — they are adjacent
+   except across a splice junction, where codonNt already does the right thing. */
+function drawDepth(bx,y,bw,H,rec,c0,c1,msg){
+  const pad=5, h=H-pad*2-8, base=y+H-pad;
+  const max=Math.max(1,rec.max);
+  let drew=0;
+  ctx.fillStyle=TH.trackTop;
+  for(let c=c0;c<c1;c++){
+    const pi=colProd[c]; if(pi===undefined||pi<0) continue;
+    const p=products[pi]; if(!p) continue;
+    const arr=rec.byLoc.get(shortLocus(p.segment)); if(!arr) continue;
+    const nts=codonNt(pi,c-p.off); if(!nts.length) continue;
+    let s=0,n=0;
+    for(const nt of nts) if(nt<arr.length){ s+=arr[nt]; n++; }
+    if(!n) continue;
+    const d=s/n; if(d<=0) continue;
+    ctx.fillRect(bx+(c-scrollCol)*cw, base-Math.max(1,(d/max)*h),
+                 Math.max(1,cw), Math.max(1,(d/max)*h));
+    drew++;
+  }
+  if(!drew){ msg('no IRMA coverage for the segments in view'); return; }
+  /* Flumina's own min_depth. Below this line both callers start reporting false
+     fixations from low template input, so it is the one threshold worth drawing
+     rather than leaving the reader to judge the height by eye. */
+  if(max>100){
+    const yy=base-(100/max)*h;
+    ctx.strokeStyle=TH.curated; ctx.globalAlpha=.5; ctx.setLineDash([3,3]);
+    ctx.beginPath(); ctx.moveTo(bx,yy+.5); ctx.lineTo(bx+bw,yy+.5); ctx.stroke();
+    ctx.setLineDash([]); ctx.globalAlpha=1;
+    ctx.fillStyle=TH.curated; ctx.globalAlpha=.75;
+    ctx.font='9px ui-monospace,monospace'; ctx.textAlign='right';
+    ctx.fillText('100', bx+bw-4, yy-2); ctx.globalAlpha=1;
+  }
+  ctx.fillStyle=TH.dim; ctx.font='10px ui-monospace,monospace'; ctx.textAlign='left';
+  ctx.fillText('IRMA per-base depth · peak '+max.toLocaleString(), bx+6, y+12);
+}
+
+function codonNt(prodIdx, codonIdx){
+  const p=products[prodIdx]; if(!p) return [];
+  const rec=gtfCDS&&gtfCDS.get(p.product); if(!rec) return [];
+  const want=[codonIdx*3, codonIdx*3+1, codonIdx*3+2], out=[];
+  let seen=0;
+  for(const [s,e] of rec.exons){
+    const len=e-s+1;
+    for(const w of want) if(w>=seen && w<seen+len) out.push(s+(w-seen));
+    seen+=len;
+    if(out.length===3) break;
+  }
+  return out;
+}
+
 /* ---- dev bootstrap ---------------------------------------------------------
    Only when this page is SERVED over http, and only to save picking a folder
    during development. It fakes the same `files` map the directory picker
@@ -1600,6 +1742,16 @@ async function devBootstrap(root='run'){
       if(!name||name.includes('.')) continue;
       const p=`${dir}/${name}/tables/READ_COUNTS.txt`;
       m.set(p, shim(`${root}/${p}`));
+      /* Also the per-segment coverage tables that feed the depth profile. These
+         DO need a listing rather than a constructed name: the file is called
+         <SEGMENT>-coverage.txt and the segment names are not known here — the
+         GTF and reference have not been read yet at bootstrap time. One extra
+         listing per sample, free on the manifest path. */
+      for(const leaf of await listDir(`${dir}/${name}/tables`)){
+        if(!leaf.endsWith('-coverage.txt')) continue;
+        const cp=`${dir}/${name}/tables/${leaf}`;
+        m.set(cp, shim(`${root}/${cp}`));
+      }
     }
   }
   // per-sample BAMs, for the pileup. Registered the same way the picker would.
@@ -1672,6 +1824,7 @@ async function loadRun(){
   try{
     await phase('reading reference GTF');
     const gtf=await readGTF();
+    gtfCDS = gtf ? gtf.cds : null;      // reset per run, not accumulated
     const aaText=await aaF.text();
     await phase('parsing the variant table');
     parseAA(aaText, gtf?gtf.lens:null);
@@ -2051,6 +2204,19 @@ document.getElementById('dtoggle').onclick=()=>{
 try{ if(lsGet('dhidden')==='1'){
   document.getElementById('detail').classList.add('collapsed');
   document.getElementById('dtoggle').textContent='‹'; } }catch(e){}
+
+/* Same control for the left sidebar. The arrows point the way the panel will
+   move, so both read outward when open and inward when closed. */
+document.getElementById('stoggle').onclick=()=>{
+  const s=document.getElementById('side');
+  const hid=s.classList.toggle('collapsed');
+  document.getElementById('stoggle').textContent = hid ? '›' : '‹';
+  try{ lsSet('shidden', hid?'1':'0'); }catch(e){}
+  resize();                       // the canvas has to re-measure
+};
+try{ if(lsGet('shidden')==='1'){
+  document.getElementById('side').classList.add('collapsed');
+  document.getElementById('stoggle').textContent='›'; } }catch(e){}
 
 document.getElementById('square').onchange=e=>{
   squareCells=e.target.checked;
@@ -2590,7 +2756,23 @@ function drawConsensus(bx,by,bw,bh,c0,c1,r0,r1,rh,expH,expPos){
     ctx.moveTo(bx,y+expH-.5); ctx.lineTo(bx+bw,y+expH-.5); ctx.stroke();
     const msg=t=>{ ctx.fillStyle=TH.dim; ctx.font='11px ui-monospace,monospace';
                    ctx.textAlign='left'; ctx.fillText(t,bx+8,y+expH/2+4); };
-    if(cw<PILE_MIN_CW) msg('zoom in past '+PILE_MIN_CW+' px per codon to read the pileup');
+    /* The first-click view is the DEPTH PROFILE from IRMA's coverage tables, not
+       the read pileup. It needs no BAM, no zoom threshold and no random access,
+       so it works on every run — and it answers the question an opened row is
+       usually asking, which is where coverage fell away. Most runs have no BAM
+       staged at all, so the old default was an apology in the common case.
+
+       The pileup is not removed: everything below still works and will be put
+       behind its own control. `showPile` is the gate until then. */
+    const _sm=names[expanded];
+    if(!showPile){
+      wantCoverage(_sm);
+      const rec=covCache.get(_sm);
+      if(rec===undefined) msg('reading IRMA coverage for '+_sm+'…');
+      else if(!rec) msg('no IRMA coverage tables for '+_sm);
+      else drawDepth(bx,y,bw,expH,rec,c0,c1,msg);
+    }
+    else if(cw<PILE_MIN_CW) msg('zoom in past '+PILE_MIN_CW+' px per codon to read the pileup');
     else if(!hasBAM(names[expanded])) msg('no BAM for '+names[expanded]+' in this folder');
     else if(!pile) msg('…');
     else if(pile.err) msg('pileup failed: '+pile.err);
@@ -2903,6 +3085,9 @@ function buildConsensus(){
    without spending a triplet lookup per read on it. */
 const PILE_MIN_CW=3, PILE_ROWS=4;
 let expanded=null;             // data row index, or null
+/* Gates the read pileup. False until it gets its own control — an expanded row
+   shows the IRMA depth profile, which needs no BAM. */
+let showPile=false;
 let pile=null;                 // {sample, seg, cols:Map, busy, frac, err}
 
 function pileHeight(rh){ return expanded===null?0:Math.max(34,rh*PILE_ROWS); }
@@ -2975,7 +3160,10 @@ function ensurePile(c0,c1){
 function expandSample(dataRow){
   expanded=dataRow; pile=null;
   const c0=Math.max(0,Math.floor(scrollCol)), c1=Math.min(NC,Math.ceil(scrollCol+bodyW()/cw));
-  if(cw>=PILE_MIN_CW && hasBAM(names[dataRow])) buildPile(names[dataRow],c0,c1);
+  // Start the coverage fetch on the click rather than on the first paint that
+  // needs it, so the band is usually populated by the time the row opens.
+  wantCoverage(names[dataRow]);
+  if(showPile && cw>=PILE_MIN_CW && hasBAM(names[dataRow])) buildPile(names[dataRow],c0,c1);
   schedule();
 }
 
@@ -3837,9 +4025,12 @@ function draw(){
   const ms=performance.now()-t0;
   msHist.push(ms); if(msHist.length>90) msHist.shift();
   const avg=msHist.reduce((a,b)=>a+b,0)/msHist.length;
+  /* Render time, frame rate and px/col were developer instrumentation sitting in
+     the user's header. The COUNT stays — that is a fact about the data and it
+     changes as filters move, so it is the one number worth a permanent slot.
+     The timings remain on window.__perf for debugging. */
+  window.__perf={ms:avg, fps:Math.round(1000/Math.max(avg,.05)), cw};
   document.getElementById('stats').innerHTML=
-    `render <b>${avg.toFixed(1)}ms</b> · <b class="good">~${Math.round(1000/Math.max(avg,.05))} fps</b>`+
-    ` · ${cw.toFixed(2)} px/col · `+
     (viewMode==='selection'
       // "reading codon table…" rather than a count, because 0 codons and
       // not-loaded-yet are different states that would otherwise look the same.
