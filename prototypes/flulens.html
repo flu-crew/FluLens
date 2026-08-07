@@ -52,6 +52,12 @@
     border:1px solid var(--border);padding:3px 8px;border-radius:6px;
     white-space:nowrap;max-width:38vw;overflow:hidden;text-overflow:ellipsis}
   .spring{flex:1}
+  /* flex:1 1 0 — grow from a ZERO basis, so both groups end up the same width no
+     matter how long their contents are. flex:1 alone would still let a longer
+     stat line claim more room and drag the mode selector with it. min-width:0
+     lets them shrink instead of overflowing on a narrow window. */
+  .hgroup{flex:1 1 0;min-width:0;display:flex;align-items:center;overflow:hidden}
+  .hgroup.right{justify-content:flex-end}
   .tools{display:flex;align-items:center;gap:6px}
   button{font:12px system-ui;color:var(--text);background:var(--panel2);
     border:1px solid var(--border);border-radius:7px;padding:5px 10px;cursor:pointer}
@@ -237,6 +243,15 @@
   .modesw button{border:0;background:transparent;color:var(--dim);padding:1px 6px;
     cursor:pointer;line-height:1.4;font-size:9px}
   .modesw button.on{background:var(--sel);color:var(--text)}
+  /* The header copy. Bigger type and real padding so it reads as the primary
+     control rather than a status readout; the small copy over the matrix keeps
+     its original size, since there it sits among the column headers. */
+  .modepick{display:flex;flex-direction:column;align-items:center;gap:3px;flex:none}
+  .modepick-label{font:9px system-ui;letter-spacing:.9px;text-transform:uppercase;
+    color:var(--dim)}
+  .modesw.big button{font-size:11px;padding:3px 12px;line-height:1.5}
+  .modesw.big button.on{background:var(--accent);color:var(--bg);font-weight:600}
+  .modesw.big{border-color:var(--dim)}
   #modeL{position:absolute;left:6px}
   /* The canvas copy is absolutely placed over the names header. The header-bar
      copy is in normal flow: the recurrence track and the reference row are both
@@ -273,14 +288,25 @@
   <!-- Empty until there is something to report. It used to open with "open a
        Flumina results folder", which restated the button directly beneath it;
        once a run loads this becomes the run's own stat line. -->
-  <span class="chip" id="chip" hidden></span>
-  <div class="spring"></div>
-  <div class="stat" id="stats">—</div>
+  <!-- The two hgroups are flex:1 1 0, so they take EQUAL width whatever is in
+       them. That is what pins the selector: with plain springs the stat text
+       ("1,035 calls" vs "137 consensus differences") changed width on every mode
+       change and shoved the buttons sideways, so the control moved out from
+       under the cursor that had just clicked it. -->
+  <div class="hgroup"><span class="chip" id="chip" hidden></span></div>
+  <!-- The mode is the single most consequential control in the app — it decides
+       what every cell MEANS — and it spent its life as 9px text tucked beside
+       the zoom buttons. Centred, labelled, and given real hit targets. -->
+  <div class="modepick">
+    <span class="modepick-label">viewer selector</span>
+    <div id="modeR" class="modesw big" title="What each cell shows: variant calls, the sample's consensus residue, the nucleotide behind it, or per-codon selection"><button data-m="variants">variants</button
+      ><button data-m="consensus">consensus</button
+      ><button data-m="nucleotides">nucleotides</button
+      ><button data-m="selection">selection</button></div>
+  </div>
+  <div class="hgroup right"><div class="stat" id="stats">—</div></div>
   <div class="tools">
     <!-- the ramp selector now sits beside the legend it controls, in the sidebar -->
-    <div id="modeR" class="modesw" title="Variant calls, each sample's consensus, or per-codon selection"><button data-m="variants">variants</button
-      ><button data-m="consensus">consensus</button
-      ><button data-m="selection">selection</button></div>
     <button id="export" title="Export what is currently on screen">export</button>
     <button id="theme" title="Light / dark">◐</button>
     <button id="zoomout">–</button><button id="zoomin">+</button>
@@ -468,6 +494,7 @@ click the ✓/✕ to override by hand</div>
          the reference row. Whichever one the eye is near is the one to hit. -->
     <div id="modeL" class="modesw"><button data-m="variants">variants</button
       ><button data-m="consensus">consensus</button
+      ><button data-m="nucleotides">nucleotides</button
       ><button data-m="selection">selection</button></div>
 
   </div>
@@ -551,7 +578,12 @@ const THEMES={
         stripe:'rgba(255,255,255,.02)',sel:'rgba(122,162,247,.20)',
         selRing:'#dce6ff',curated:'#fab219',
         trackTop:'rgba(157,197,244,.9)',trackBot:'rgba(37,106,191,.12)',
-        qcPass:'#3f7a4a',qcPassOn:'#4bbf4b',qcFail:'#8a4444',qcFailOn:'#e06c6c',rowSel:'rgba(122,162,247,.13)',panelBg:'#14171d',fmMark:'#4bbf9b',consSame:'rgba(255,255,255,.09)',consDiff:'#7aa2f7',pileBg:'#0f1218',pileRef:'rgba(255,255,255,.22)'},
+        qcPass:'#3f7a4a',qcPassOn:'#4bbf4b',qcFail:'#8a4444',qcFailOn:'#e06c6c',rowSel:'rgba(122,162,247,.13)',panelBg:'#14171d',fmMark:'#4bbf9b',consSame:'rgba(255,255,255,.09)',consDiff:'#7aa2f7',pileBg:'#0f1218',pileRef:'rgba(255,255,255,.22)',
+        /* The opened row, and the droplines running from its changes down through
+           the band. The droplines are deliberately NOT consDiff: against a band
+           full of blue coverage bars a blue line disappears, which is the one
+           thing it exists not to do. */
+        expRow:'rgba(255,255,255,.085)',dropLine:'#5fd95f'},
   light:{surface:'#fcfcfb',pane:'#f2f2ef',trackBg:'#eeeeea',rule:'#dcdcd5',
          tick:'#c8c8c0',bound:'#a8a89e',boundSec:'#c9a86a',ink:'#3a3a36',
          dim:'#8a8a82',label:'#5a5a54',glyphInk:'#fcfcfb',refBg:'#e7e7e2',
@@ -559,7 +591,8 @@ const THEMES={
          stripe:'rgba(0,0,0,.022)',sel:'rgba(42,120,214,.18)',
          selRing:'#12356b',curated:'#b8790a',
          trackTop:'rgba(42,120,214,.75)',trackBot:'rgba(42,120,214,.08)',
-         qcPass:'#7aa87a',qcPassOn:'#0a7a0a',qcFail:'#c99a9a',qcFailOn:'#b02525',rowSel:'rgba(42,120,214,.11)',panelBg:'#f2f2ef',fmMark:'#0a7a5a',consSame:'rgba(0,0,0,.10)',consDiff:'#2a78d6',pileBg:'#e9e9e4',pileRef:'rgba(0,0,0,.18)'}
+         qcPass:'#7aa87a',qcPassOn:'#0a7a0a',qcFail:'#c99a9a',qcFailOn:'#b02525',rowSel:'rgba(42,120,214,.11)',panelBg:'#f2f2ef',fmMark:'#0a7a5a',consSame:'rgba(0,0,0,.10)',consDiff:'#2a78d6',pileBg:'#e9e9e4',pileRef:'rgba(0,0,0,.18)',
+         expRow:'rgba(0,0,0,.075)',dropLine:'#128a12'}
 };
 let themeName='dark', rampName='blue';
 let TH=THEMES.dark;
@@ -717,6 +750,14 @@ let gtfDir='', gtfDirNote='';
 let gtfCDS=null;
 let vcfCache=new Map();     // sample -> Map("locus:pos" -> info)
 let refProt=null;
+/* product -> spliced reference CDS. Nucleotides mode's reference row. Declared
+   with the rest of the state, above every use. */
+let refCDS=new Map();
+/* Nucleotide colours. Deliberately NOT the semantic palette (--good, --warn,
+   --bad): those mean "verdict" everywhere else in this app, and a base is not a
+   verdict. Mid-tone so one set works on both surfaces. */
+const NT_COL={A:'#3fa35a', C:'#4d86d6', G:'#c9922f', T:'#c25757',
+              U:'#c25757', N:'#6b7484', '-':'#6b7484'};
 let rawLoci=[];   // reference FASTA names, unshortened, for subtype checks           // product -> translated reference protein
 /* WFABC selection results. Keyed on (animal, locus, nt position) — per ANIMAL,
    not per sample, because the whole point is a frequency trajectory across the
@@ -892,6 +933,10 @@ async function readReferenceProteins(gtf){
     }
     if(!seq) continue;
     const cds=rec.exons.map(([s,e])=>seq.slice(s-1,e)).join('');
+    // Keep the spliced CDS, not just its translation. Nucleotides mode draws the
+    // reference bases, and re-splicing them later would mean re-reading the
+    // FASTA and repeating the exon walk for no reason.
+    refCDS.set(g, cds);
     prot.set(g, translate(cds));
   }
   return prot.size?prot:null;
@@ -1500,7 +1545,11 @@ function pumpSeg(){
 }
 const segRecovered=rec=>{ let n=0; if(rec) for(const [,v] of rec.byLoc) if(v>0) n++; return n; };
 
-/* ---- per-base depth, from IRMA's coverage tables ---------------------------
+/* ---- depth, from IRMA's coverage tables ------------------------------------
+   IRMA's tables are per BASE. What this app draws is per CODON, because the
+   matrix axis is codons — each column is the mean of its three bases. Labelled
+   that way too: calling it per-base depth would promise a resolution the x-axis
+   cannot show.
    IRMA writes tables/<SEGMENT>-coverage.txt with one row per reference base:
 
      Reference_Name  Position  Coverage Depth  Consensus  Deletions  ...
@@ -1584,6 +1633,11 @@ function pumpCov(){
 function drawDepth(bx,y,bw,H,rec,c0,c1,msg){
   const pad=5, h=H-pad*2-8, base=y+H-pad;
   const max=Math.max(1,rec.max);
+  /* IRMA's tables are per base; the axis is codons. Below 6 px a column cannot
+     show three bars, so the honest summary is the codon mean. At or above it
+     there is room for the real thing, and the caption says which you are
+     looking at rather than leaving the resolution implied. */
+  const perBase = cw>=6;
   let drew=0;
   ctx.fillStyle=TH.trackTop;
   for(let c=c0;c<c1;c++){
@@ -1591,15 +1645,54 @@ function drawDepth(bx,y,bw,H,rec,c0,c1,msg){
     const p=products[pi]; if(!p) continue;
     const arr=rec.byLoc.get(shortLocus(p.segment)); if(!arr) continue;
     const nts=codonNt(pi,c-p.off); if(!nts.length) continue;
-    let s=0,n=0;
-    for(const nt of nts) if(nt<arr.length){ s+=arr[nt]; n++; }
-    if(!n) continue;
-    const d=s/n; if(d<=0) continue;
-    ctx.fillRect(bx+(c-scrollCol)*cw, base-Math.max(1,(d/max)*h),
-                 Math.max(1,cw), Math.max(1,(d/max)*h));
-    drew++;
+    const x0=bx+(c-scrollCol)*cw;
+    if(perBase){
+      const w3=cw/3;
+      let any=false;
+      for(let k=0;k<nts.length;k++){
+        const nt=nts[k]; if(nt>=arr.length) continue;
+        const d=arr[nt]; if(d<=0) continue;
+        const bh=Math.max(1,(d/max)*h);
+        ctx.fillRect(x0+k*w3, base-bh, Math.max(1,w3), bh);
+        any=true;
+      }
+      if(any) drew++;
+    } else {
+      let s=0,n=0;
+      for(const nt of nts) if(nt<arr.length){ s+=arr[nt]; n++; }
+      if(!n) continue;
+      const d=s/n; if(d<=0) continue;
+      const bh=Math.max(1,(d/max)*h);
+      ctx.fillRect(x0, base-bh, Math.max(1,cw), bh);
+      drew++;
+    }
   }
   if(!drew){ msg('no IRMA coverage for the segments in view'); return; }
+  /* A dropline from every consensus change in the opened sample straight down to
+     zero, so the codon that changed can be read against the depth under it
+     without tracking across an empty band by eye. consAlt===255 means "same as
+     the reference", so anything else is a difference. Drawn after the profile
+     and before the gridlines: it has to sit on top of the fill to be followed,
+     but it is not more important than the axis. */
+  if(expanded!==null && typeof consAlt!=='undefined' && consAlt){
+    const cbase=expanded*NC;          // not `base` — that is the baseline Y above
+    ctx.strokeStyle=TH.dropLine; ctx.globalAlpha=.85; ctx.lineWidth=1;
+    ctx.beginPath();
+    for(let c=c0;c<c1;c++){
+      if(consAlt[cbase+c]===255) continue;
+      const x=Math.round(bx+(c-scrollCol)*cw+Math.max(1,cw)/2)+.5;
+      ctx.moveTo(x,y+16); ctx.lineTo(x,base);
+    }
+    ctx.stroke(); ctx.globalAlpha=1;
+  }
+  // Gridlines at the same values the gutter labels, drawn under nothing else so
+  // they stay faint enough not to compete with the profile itself.
+  ctx.strokeStyle=TH.rule; ctx.globalAlpha=.55; ctx.beginPath();
+  for(const t of depthTicks(max)){
+    const yy=Math.round(base-(t/max)*h)+.5;
+    ctx.moveTo(bx,yy); ctx.lineTo(bx+bw,yy);
+  }
+  ctx.stroke(); ctx.globalAlpha=1;
   /* Flumina's own min_depth. Below this line both callers start reporting false
      fixations from low template input, so it is the one threshold worth drawing
      rather than leaving the reader to judge the height by eye. */
@@ -1612,8 +1705,11 @@ function drawDepth(bx,y,bw,H,rec,c0,c1,msg){
     ctx.font='9px ui-monospace,monospace'; ctx.textAlign='right';
     ctx.fillText('100', bx+bw-4, yy-2); ctx.globalAlpha=1;
   }
+  // The peak is on the axis in the gutter now, so the caption only has to say
+  // what the band IS.
   ctx.fillStyle=TH.dim; ctx.font='10px ui-monospace,monospace'; ctx.textAlign='left';
-  ctx.fillText('IRMA per-base depth · peak '+max.toLocaleString(), bx+6, y+12);
+  ctx.fillText(perBase?'IRMA depth · per base':'IRMA depth · mean per codon',
+               bx+6, y+12);
 }
 
 function codonNt(prodIdx, codonIdx){
@@ -1838,6 +1934,7 @@ async function loadRun(){
        means afStats is populated before the sidebar below is built. */
     reconcileFrequencies();
     await phase('translating reference proteins');
+    refCDS=new Map();          // per run, not accumulated across runs
     refProt=await readReferenceProteins(gtf);
     /* Keep the RAW reference names. Everything else in the app uses shortLocus()
        (A_HA_H3 -> HA), which strips exactly the suffix the subtype check needs. */
@@ -2702,51 +2799,25 @@ async function resolveCodon(vi,mates){
 /* Paint the consensus alignment. Identity is a faint ground drawn once per
    product per row rather than per cell — 141 x 4,776 residue-coloured cells is
    an even wash, and the whole point of the view is what moved. */
-function drawConsensus(bx,by,bw,bh,c0,c1,r0,r1,rh,expH,expPos){
-  const glyphs = cw>=7;
-  if(glyphs&&(!atlas||atlasGW!==Math.ceil(cw*dpr)||atlasGH!==Math.ceil(rh*dpr))){
-    const A=buildAtlasInto(cw,rh,[{ink:INK_DARK},{ink:INK_LIGHT},
-      {scheme:1,halo:INK_DARK},{scheme:1,halo:INK_LIGHT}]);
-    atlas=A.cvs; atlasGW=A.gw; atlasGH=A.gh;
-  }
-  // identity ground
-  ctx.fillStyle=TH.consSame;
-  for(let r=r0;r<r1;r++){
-    const sm=rowOrder[r]; if(sm===undefined) continue;
-    const y=__yOf(r);
-    for(const pr of products){
-      const x0=bx+(pr.off-scrollCol)*cw, w=pr.aa*cw;
-      if(x0+w<bx||x0>bx+bw) continue;
-      ctx.fillRect(Math.max(bx,x0), y, Math.min(x0+w,bx+bw)-Math.max(bx,x0), Math.max(1,rh));
-    }
-  }
-  // differences
-  const mark=Math.max(cw<1?3:1,cw), mh=Math.max(cw<1?2:1,rh);
-  ctx.fillStyle=TH.consDiff;
-  const rects=new Path2D(); let n=0;
-  for(let r=r0;r<r1;r++){
-    const sm=rowOrder[r]; if(sm===undefined) continue;
-    const base=sm*NC, y=__yOf(r);
-    for(let c=c0;c<c1;c++){
-      if(consAlt[base+c]===255) continue;
-      rects.rect(bx+(c-scrollCol)*cw, y, mark, mh); n++;
-    }
-  }
-  ctx.fill(rects);
-  if(glyphs){
-    ctx.globalAlpha=Math.min(1,(cw-7)/3);
-    const gb=aaScheme==='none'?0:2;
-    for(let r=r0;r<r1;r++){
-      const sm=rowOrder[r]; if(sm===undefined) continue;
-      const base=sm*NC, y=__yOf(r);
-      for(let c=c0;c<c1;c++){
-        const a=consAlt[base+c]; if(a===255) continue;
-        ctx.drawImage(atlas,a*atlasGW,(gb+1)*atlasGH,atlasGW,atlasGH,
-          bx+(c-scrollCol)*cw, y, cw, rh);
-      }
-    }
-    ctx.globalAlpha=1;
-  }
+/* The opened sample's own row, lifted out of the field.
+
+   Without it the band floats under a row that looks like all the others, and the
+   changes it belongs to are indistinguishable from the eleven rows of changes
+   around them — which is the opposite of what opening a row is for. Painted over
+   the identity ground and under the difference marks, so it lightens the row
+   without touching the cells. */
+function paintExpandedRow(bx,by,bw,rh){
+  if(expanded===null||typeof rowPos==='undefined'||!rowPos) return;
+  const p=rowPos[expanded]; if(p===undefined) return;
+  const y=__yOf(p);
+  ctx.fillStyle=TH.expRow;
+  ctx.fillRect(bx,y,bw,Math.max(1,rh));
+}
+
+/* The expanded sample's band, shared by the consensus and nucleotides views.
+   It was inline in drawConsensus; a second caller meant either extracting it
+   or keeping two copies of the depth logic in step by hand. */
+function drawExpandedBand(bx,by,bw,rh,expH,expPos,c0,c1){
   // the expanded sample's read pileup
   if(expPos>=0&&expH>0){
     const y=by+(expPos+1-scrollRow)*rh;
@@ -2815,6 +2886,117 @@ function drawConsensus(bx,by,bw,bh,c0,c1,r0,r1,rh,expH,expPos){
     }
   }
 }
+
+function drawConsensus(bx,by,bw,bh,c0,c1,r0,r1,rh,expH,expPos){
+  const glyphs = cw>=7;
+  if(glyphs&&(!atlas||atlasGW!==Math.ceil(cw*dpr)||atlasGH!==Math.ceil(rh*dpr))){
+    const A=buildAtlasInto(cw,rh,[{ink:INK_DARK},{ink:INK_LIGHT},
+      {scheme:1,halo:INK_DARK},{scheme:1,halo:INK_LIGHT}]);
+    atlas=A.cvs; atlasGW=A.gw; atlasGH=A.gh;
+  }
+  // identity ground
+  ctx.fillStyle=TH.consSame;
+  for(let r=r0;r<r1;r++){
+    const sm=rowOrder[r]; if(sm===undefined) continue;
+    const y=__yOf(r);
+    for(const pr of products){
+      const x0=bx+(pr.off-scrollCol)*cw, w=pr.aa*cw;
+      if(x0+w<bx||x0>bx+bw) continue;
+      ctx.fillRect(Math.max(bx,x0), y, Math.min(x0+w,bx+bw)-Math.max(bx,x0), Math.max(1,rh));
+    }
+  }
+  paintExpandedRow(bx,by,bw,rh);
+  // differences
+  const mark=Math.max(cw<1?3:1,cw), mh=Math.max(cw<1?2:1,rh);
+  ctx.fillStyle=TH.consDiff;
+  const rects=new Path2D(); let n=0;
+  for(let r=r0;r<r1;r++){
+    const sm=rowOrder[r]; if(sm===undefined) continue;
+    const base=sm*NC, y=__yOf(r);
+    for(let c=c0;c<c1;c++){
+      if(consAlt[base+c]===255) continue;
+      rects.rect(bx+(c-scrollCol)*cw, y, mark, mh); n++;
+    }
+  }
+  ctx.fill(rects);
+  if(glyphs){
+    ctx.globalAlpha=Math.min(1,(cw-7)/3);
+    const gb=aaScheme==='none'?0:2;
+    for(let r=r0;r<r1;r++){
+      const sm=rowOrder[r]; if(sm===undefined) continue;
+      const base=sm*NC, y=__yOf(r);
+      for(let c=c0;c<c1;c++){
+        const a=consAlt[base+c]; if(a===255) continue;
+        ctx.drawImage(atlas,a*atlasGW,(gb+1)*atlasGH,atlasGW,atlasGH,
+          bx+(c-scrollCol)*cw, y, cw, rh);
+      }
+    }
+    ctx.globalAlpha=1;
+  }
+  if(expPos>=0&&expH>0) drawExpandedBand(bx,by,bw,rh,expH,expPos,c0,c1);
+}
+
+/* ---- nucleotides -----------------------------------------------------------
+   A separate MODE, not a change of axis. The ruler stays codons, because the
+   curated database, the FluMut markers and the SNPGenie layer are all keyed to
+   residue positions and would silently point at the wrong places on a
+   nucleotide ruler. What changes is what a cell contains: each codon column is
+   split into its three bases, and the base that actually differs is painted.
+
+   The consensus rule is the same one drawConsensus uses, so the two modes agree
+   about which cells changed — they only disagree about what to show in them. */
+function drawNucleotides(bx,by,bw,bh,c0,c1,r0,r1,rh,expH,expPos){
+  // identity ground, exactly as consensus draws it
+  ctx.fillStyle=TH.consSame;
+  for(let r=r0;r<r1;r++){
+    const sm=rowOrder[r]; if(sm===undefined) continue;
+    const y=__yOf(r);
+    for(const pr of products){
+      const x0=bx+(pr.off-scrollCol)*cw, w=pr.aa*cw;
+      if(x0+w<bx||x0>bx+bw) continue;
+      ctx.fillRect(Math.max(bx,x0), y, Math.min(x0+w,bx+bw)-Math.max(bx,x0), Math.max(1,rh));
+    }
+  }
+  paintExpandedRow(bx,by,bw,rh);
+  const thirds = cw>=3;                 // room for three bars in a column
+  const letters = cw>=21 && rh>=9;      // room for three legible glyphs
+  const w3=cw/3;
+  let n=0;
+  if(letters) ctx.font=Math.min(rh-2,Math.floor(w3*1.4))+'px ui-monospace,monospace';
+  for(let r=r0;r<r1;r++){
+    const sm=rowOrder[r]; if(sm===undefined) continue;
+    const base=sm*NC, y=__yOf(r);
+    for(let c=c0;c<c1;c++){
+      const vi=consVar[base+c]; if(vi<0) continue;
+      const rc=V.refcod[vi], ac=V.altcod[vi];
+      if(!rc||!ac) continue;
+      n++;
+      const x0=bx+(c-scrollCol)*cw;
+      if(!thirds){
+        // Too narrow to separate the bases; mark the codon in the colour of the
+        // base that changed, so the column still carries the right hue.
+        let k=0; for(;k<3;k++) if(rc[k]!==ac[k]) break;
+        ctx.fillStyle=NT_COL[ac[k]]||TH.consDiff;
+        ctx.fillRect(x0, y, Math.max(1,cw), Math.max(1,rh));
+        continue;
+      }
+      for(let k=0;k<3;k++){
+        if(rc[k]===ac[k]) continue;     // only the base that moved
+        ctx.fillStyle=NT_COL[ac[k]]||TH.consDiff;
+        ctx.fillRect(x0+k*w3, y, Math.max(1,w3), Math.max(1,rh));
+        if(letters){
+          ctx.fillStyle=TH.glyphInk; ctx.textAlign='center';
+          ctx.fillText(ac[k], x0+k*w3+w3/2, y+rh/2+Math.min(rh,w3)*0.33);
+          ctx.textAlign='left';
+        }
+      }
+    }
+  }
+  window.__ntDrawn=n;
+  // the expanded sample's depth band, same as the consensus view
+  if(expPos>=0&&expH>0) drawExpandedBand(bx,by,bw,rh,expH,expPos,c0,c1);
+}
+
 
 /* ---- one variant, two callers -------------------------------------------
    LoFreq and GATK4 both call most sites, so the table carries two rows for the
@@ -3054,12 +3236,19 @@ const isGenotypeAF=i=>afSource&&afSource[i]===2;
    Only the DIFFERENCES are painted. Filling 141 x 4,776 cells with residue
    colours produces an even wash with no signal in it; identity is drawn as a
    faint ground per product instead, so the eye goes straight to what moved. */
-let viewMode='variants';       // 'variants' | 'consensus'
+let viewMode='variants';       // 'variants' | 'consensus' | 'nucleotides' | 'selection'
 let consAlt=null;              // NT*NC — AA index of the consensus residue,
                                // 255 where it matches the reference
+/* The variant that WON each consensus cell, or -1. consAlt keeps only the amino
+   acid, which is all the consensus view needs; nucleotides mode needs the codon
+   behind it, and the honest way to get that is to remember which call produced
+   the residue rather than re-deriving it from the reference and hoping the same
+   one wins twice. */
+let consVar=null;              // NT*NC — index into V, or -1
 let consN=0;
 function buildConsensus(){
   consAlt=new Uint8Array(NT*NC).fill(255); consN=0;
+  consVar=new Int32Array(NT*NC).fill(-1);
   const best=new Float32Array(NT*NC);
   for(let i=0;i<V.n;i++){
     // A GATK4-only hom-alt call says "this genotype", not "this fraction", so
@@ -3069,7 +3258,7 @@ function buildConsensus(){
     const k=V.row[i]*NC+V.col[i];
     if(V.freq[i]<=best[k]) continue;         // several fixed calls in one codon
     if(consAlt[k]===255) consN++;
-    best[k]=V.freq[i]; consAlt[k]=V.alt[i];
+    best[k]=V.freq[i]; consAlt[k]=V.alt[i]; consVar[k]=i;
   }
 }
 
@@ -3090,7 +3279,24 @@ let expanded=null;             // data row index, or null
 let showPile=false;
 let pile=null;                 // {sample, seg, cols:Map, busy, frac, err}
 
-function pileHeight(rh){ return expanded===null?0:Math.max(34,rh*PILE_ROWS); }
+/* The floor, not the multiplier, is what matters: at fit zoom rh is around a
+   pixel, so the band always collapsed to its minimum and the depth profile was
+   a 34px sliver. 34 -> 102 -> 204; the profile is the point of the band, and
+   below about 200px most of it is empty headroom above a flat trace. Rows tall
+   enough to exceed that are zoomed in far enough that rh*PILE_ROWS wins. */
+function pileHeight(rh){ return expanded===null?0:Math.max(204,rh*PILE_ROWS); }
+
+/* Round tick values for the depth axis, shared by the gridlines in the band and
+   the labels in the names gutter — they must agree, so they come from one place.
+   1/2/5 x a power of ten, aiming for about three ticks. */
+function depthTicks(max){
+  if(!(max>0)) return [];
+  const raw=max/3, p=Math.pow(10,Math.floor(Math.log10(raw))), r=raw/p;
+  const step=(r>=5?5:r>=2?2:1)*p;
+  const out=[];
+  for(let v=step; v<=max*1.0001; v+=step) out.push(v);
+  return out;
+}
 function segsInView(c0,c1){
   const out=new Set();
   for(const pr of products){
@@ -3752,6 +3958,7 @@ function draw(){
     else window.__drawn=0;
   }
   else if(viewMode==='consensus'){ ensurePile(c0,c1); drawConsensus(bx,by,bw,bh,c0,c1,r0,r1,rh,expH,expPos); }
+  else if(viewMode==='nucleotides'){ drawNucleotides(bx,by,bw,bh,c0,c1,r0,r1,rh,expH,expPos); }
   else {
   // Iterate the filtered CALL LIST, never the cell grid: the matrix is ~3%
   // dense and sampling columns would silently drop most of it.
@@ -3802,7 +4009,38 @@ function draw(){
     const ry=TRACK_H+RULER_H;
     ctx.save(); ctx.beginPath(); ctx.rect(bx,ry,bw,REF_H); ctx.clip();
     ctx.fillStyle=TH.refBg; ctx.fillRect(bx,ry,bw,REF_H);
-    if(cw>=7){
+    /* In nucleotides mode the row shows the reference BASES, three per codon.
+       Leaving it as residues while the body below draws bases would put two
+       different alphabets on one column — the reader would have no way to tell
+       which one a given mark belonged to. Drawn directly rather than through the
+       glyph atlas: the atlas is built per amino acid, and three sub-glyphs in a
+       codon-wide cell is not what it caches. */
+    if(viewMode==='nucleotides' && cw>=3){
+      const w3=cw/3, showLetters = cw>=21;
+      ctx.font=Math.min(REF_H-3,Math.floor(w3*1.4))+'px ui-monospace,monospace';
+      ctx.textAlign='center';
+      for(let c=c0;c<c1;c++){
+        const pi=colProd[c]; if(pi===undefined||pi<0) continue;
+        const p=products[pi]; const cds=refCDS.get(p.product); if(!cds) continue;
+        const st=(c-p.off)*3; if(st+2>=cds.length) continue;
+        const x0=bx+(c-scrollCol)*cw;
+        for(let k=0;k<3;k++){
+          const b=cds[st+k];
+          ctx.fillStyle=NT_COL[b]||TH.refInk;
+          if(showLetters){
+            ctx.globalAlpha=.85;
+            ctx.fillText(b, x0+k*w3+w3/2, ry+REF_H-4);
+            ctx.globalAlpha=1;
+          } else {
+            ctx.globalAlpha=.55;
+            ctx.fillRect(x0+k*w3, ry+3, Math.max(1,w3-0.5), REF_H-6);
+            ctx.globalAlpha=1;
+          }
+        }
+      }
+      ctx.textAlign='left';
+    }
+    else if(cw>=7){
       if(!refAtlas||refGW!==Math.ceil(cw*dpr)||refGH!==Math.ceil(REF_H*dpr)){
         const A=buildAtlasInto(cw,REF_H,[{ink:TH.ink},{scheme:1,halo:TH.refBg}]);
         refAtlas=A.cvs; refGW=A.gw; refGH=A.gh;
@@ -3913,6 +4151,9 @@ function draw(){
       // expansion labels the wrong row.
       const y=__yOf(r);
       if(r%2){ ctx.fillStyle=TH.stripe; ctx.fillRect(0,y,NAMES_W,rh); }
+      // Same lift as the matrix half, so the opened row reads as one band all
+      // the way across rather than stopping at the names divider.
+      if(sm===expanded){ ctx.fillStyle=TH.expRow; ctx.fillRect(0,y,NAMES_W,rh); }
       if(sm===selSample){ ctx.fillStyle=TH.rowSel; ctx.fillRect(0,y,NAMES_W,rh); }
       if(dragRow&&dragRow.sample===sm){ ctx.fillStyle=TH.sel; ctx.fillRect(0,y,NAMES_W,rh); }
       // QC mark — a check or a cross, brighter when the reviewer set it by hand
@@ -3988,6 +4229,31 @@ function draw(){
     ctx.fillText((NTvis||NT).toLocaleString()+' samples',9,by+16);
     ctx.fillText('(scroll to zoom in)',9,by+31);
   }
+
+  /* Depth axis for the expanded band, in the gutter beside it. Deliberately
+     outside the rh>=9 branch above: at fit zoom the names are not drawn at all,
+     and that is precisely when a profile with no scale is least readable.
+     Geometry is copied from drawDepth rather than guessed — if the two drift the
+     labels stop pointing at their own gridlines, which is worse than no axis. */
+  if(expanded!==null && (viewMode==='consensus'||viewMode==='nucleotides')
+     && expPos>=0 && expH>0){
+    const rec=covCache.get(names[expanded]);
+    if(rec && rec.max>0){
+      const ty=by+(expPos+1-scrollRow)*rh;
+      const pad=5, hh=expH-pad*2-8, bs=ty+expH-pad;
+      ctx.font='9px ui-monospace,monospace';
+      ctx.fillStyle=TH.label; ctx.textAlign='left';
+      ctx.fillText('depth', 9, ty+12);
+      ctx.fillStyle=TH.dim; ctx.textAlign='right';
+      for(const t of depthTicks(rec.max)){
+        const yy=bs-(t/rec.max)*hh;
+        if(yy<ty+14) continue;              // would sit on top of the caption
+        ctx.fillText(t.toLocaleString(), NAMES_W-8, yy+3);
+      }
+      ctx.fillText('0', NAMES_W-8, bs+3);
+      ctx.textAlign='left';
+    }
+  }
   ctx.restore();
   ctx.fillStyle=TH.pane; ctx.fillRect(0,0,NAMES_W,topH());
   ctx.strokeStyle=TH.rule; ctx.beginPath();
@@ -4037,8 +4303,12 @@ function draw(){
       ? (snpCells ? `${snpStats.cells.toLocaleString()} codons with diversity`
                   : (snpState==='norun'||snpState==='nofile'
                        ? 'no SNPGenie results' : 'reading codon table…'))
-      : `${(viewMode==='consensus'?consN:(window.__drawn||0)).toLocaleString()} `+
-        `${viewMode==='consensus'?'consensus differences':'calls'}`);
+      : viewMode==='consensus'
+        ? `${consN.toLocaleString()} consensus differences`
+      : viewMode==='nucleotides'
+        // Same cells the consensus view counts, described as what they are here.
+        ? `${consN.toLocaleString()} nucleotide changes`
+        : `${(window.__drawn||0).toLocaleString()} calls`);
 }
 
 /* ---- detail panel ---------------------------------------------------------- */
@@ -5181,7 +5451,9 @@ async function doExport(){
 function setViewMode(m){
   if(m===viewMode) return;
   viewMode=m;
-  if(m!=='consensus'){ expanded=null; pile=null; }
+  // Nucleotides shows the same expanded band as consensus, so leaving that mode
+  // for this one must not silently close the row the reader had opened.
+  if(m!=='consensus'&&m!=='nucleotides'){ expanded=null; pile=null; }
   try{ lsSet('viewmode',m); }catch(e){}
   // The codon table is 57 MB, so it is read on first use of this view rather
   // than at open. schedule() again on arrival — the first frame draws empty.
@@ -5191,7 +5463,11 @@ function setViewMode(m){
 for(const id of ['modeL','modeR'])
   document.getElementById(id).addEventListener('click',e=>{
     const b=e.target.closest('button'); if(b) setViewMode(b.dataset.m); });
-try{ const v=lsGet('viewmode'); if(v==='consensus'||v==='variants') viewMode=v; }catch(e){}
+/* 'selection' is deliberately NOT restorable — it reads a 57 MB codon table, and
+   reopening the app straight into a long load is a worse default than starting
+   where every run can start. Nucleotides costs nothing extra, so it restores. */
+try{ const v=lsGet('viewmode');
+     if(v==='consensus'||v==='variants'||v==='nucleotides') viewMode=v; }catch(e){}
 
 // ?run=<dir> picks which linked run to auto-load in dev; defaults to 'run'
 /* ---- desktop shell ---------------------------------------------------------
