@@ -193,6 +193,18 @@
   .unconf{font:9px ui-monospace,monospace;color:var(--warn);border:1px solid #6b5410;
     border-radius:4px;padding:0 3px;margin-left:4px;white-space:nowrap;
     background:rgba(250,178,25,.09)}
+  /* The site listing is UNFILTERED in the nucleotides view, so it carries rows
+     the variants view hides. Dimming them keeps that difference on screen: the
+     reader clicked something painted and gets it, without the panel quietly
+     redefining what "calls here" counts. Removing them is what caused the bug;
+     showing them undifferentiated would only move it. */
+  table.site tr.filt td{opacity:.5}
+  .ftag{font:9px ui-monospace,monospace;color:var(--dim);border:1px solid var(--border);
+    border-radius:4px;padding:0 3px;margin-left:4px;white-space:nowrap}
+  /* The call that changes the SELECTED base, when one is selected. The panel
+     lists the whole codon, so without this the reader has to re-derive which of
+     three rows belongs to the base under their own selection band. */
+  table.site tr.onbase td:first-child{box-shadow:inset 2px 0 0 var(--accent)}
 
   /* amino-acid change block */
   .aachange{border:1px solid var(--border);background:var(--panel2);
@@ -2032,7 +2044,7 @@ async function loadRun(){
     renderMetaPicker();
     // gatkCache too, or a second run shows the first run's FILTER values
     hidden=new Set(); vcfCache=new Map(); gatkCache=new Map();
-    selVariant=null; selCol=null;
+    selVariant=null; selCol=null; selNt=null;
     assess=null; altReads=null; assessStats=null; assessReady=false; assessBusy=null;
     await phase('laying out');
     applyFilters(); ready=true; rowPx=0; scrollRow=0;
@@ -3372,6 +3384,13 @@ function expandSample(dataRow){
   if(showPile && cw>=PILE_MIN_CW && hasBAM(names[dataRow])) buildPile(names[dataRow],c0,c1);
   schedule();
 }
+/* Re-derive the open band's contents without closing it. Used when the view
+   mode changes under an already-expanded row: the row stays where the reader
+   put it, the band is rebuilt for the mode now drawing it. */
+function refreshBand(){
+  if(expanded===null) return;
+  expandSample(expanded);
+}
 
 /* ==================================================================== BAM ==
    Random-access BAM reading, no dependencies.
@@ -3889,6 +3908,33 @@ function fit(){
 
 let msHist=[]; const paths=new Array(7).fill(null);
 let selVariant=null, selCol=null;
+/* Which of the codon's three bases is selected, in the nucleotides view only.
+   The ruler stays codons in every mode, so selCol remains the codon and this
+   narrows it — a selection band the full width of a codon claims three bases
+   when the reader clicked one, and in a view whose whole point is which base
+   moved that is the wrong answer. Null in every other mode and below 3 px per
+   codon, where the thirds are not separable on screen either. */
+let selNt=null;
+
+// The base under the pointer within codon `c`, 0-2. Clamped, because a click
+// lands on a boundary pixel often enough to matter at low zoom.
+function ntUnder(cx,c){
+  const f=(scrollCol+(cx-NAMES_W)/cw)-c;
+  return Math.max(0,Math.min(2,Math.floor(f*3)));
+}
+/* The base a call actually changes, which is the one drawNucleotides paints.
+   Preferred over the pointer for a cell click: cellAt snaps within a pixel of
+   tolerance, so the pointer's third can belong to the neighbouring codon while
+   the hit does not. Returns -1 when the codons are not both known. */
+function changedNt(vi){
+  const rc=V.refcod[vi], ac=V.altcod[vi];
+  if(!rc||!ac) return -1;
+  for(let k=0;k<3;k++) if(rc[k]!==ac[k]) return k;
+  return -1;
+}
+// Nucleotide selection only means anything in that view, at a zoom that shows
+// the thirds. One predicate so the click handlers and the two draws agree.
+const ntSel=()=> viewMode==='nucleotides' && cw>=3 && selNt!==null;
 
 // Reference residue at a grid column, or null outside a known protein
 function refAt(col){
@@ -3938,7 +3984,10 @@ function draw(){
   }
   if(selCol!==null){
     const x=bx+(selCol-scrollCol)*cw;
-    ctx.fillStyle=TH.sel; ctx.fillRect(x,by,Math.max(1.5,cw),bh);
+    ctx.fillStyle=TH.sel;
+    // In nucleotides, band the selected base rather than the whole codon.
+    if(ntSel()) ctx.fillRect(x+selNt*(cw/3),by,Math.max(1.5,cw/3),bh);
+    else ctx.fillRect(x,by,Math.max(1.5,cw),bh);
   }
   // Selected sample: a band the full width of the body, drawn UNDER the calls
   // so it guides the eye across the row without dimming anything on it.
@@ -3958,7 +4007,10 @@ function draw(){
     else window.__drawn=0;
   }
   else if(viewMode==='consensus'){ ensurePile(c0,c1); drawConsensus(bx,by,bw,bh,c0,c1,r0,r1,rh,expH,expPos); }
-  else if(viewMode==='nucleotides'){ drawNucleotides(bx,by,bw,bh,c0,c1,r0,r1,rh,expH,expPos); }
+  // ensurePile in both band views, not just consensus: with showPile on, the
+  // nucleotides band would otherwise sit at '…' forever waiting for a scan
+  // nothing ever starts.
+  else if(viewMode==='nucleotides'){ ensurePile(c0,c1); drawNucleotides(bx,by,bw,bh,c0,c1,r0,r1,rh,expH,expPos); }
   else {
   // Iterate the filtered CALL LIST, never the cell grid: the matrix is ~3%
   // dense and sampling columns would silently drop most of it.
@@ -3994,8 +4046,11 @@ function draw(){
     const c=V.col[selVariant], r=rowPos[V.row[selVariant]];
     if(r>=0&&c>=c0&&c<c1&&r>=r0&&r<r1){
       ctx.strokeStyle=TH.selRing; ctx.lineWidth=1.5;
-      ctx.strokeRect(bx+(c-scrollCol)*cw-1, __yOf(r)-1,
-                     Math.max(3,cw)+2, Math.max(3,rh)+2);
+      // The ring has to agree with the band above it: three bases ringed while
+      // one is banded reads as two different selections.
+      const rx=bx+(c-scrollCol)*cw+(ntSel()?selNt*(cw/3):0);
+      const rw=ntSel()?Math.max(3,cw/3):Math.max(3,cw);
+      ctx.strokeRect(rx-1, __yOf(r)-1, rw+2, Math.max(3,rh)+2);
     }
   }
   ctx.restore();
@@ -4938,35 +4993,119 @@ async function renderVariant(el,i){
 function renderSite(el,col){
   const p=products.find(x=>col>=x.off&&col<x.off+x.aa);
   const aa=p?col-p.off+1:col+1;
-  const rows=[];
-  for(let n=0;n<keep.length;n++){ const i=keep[n]; if(V.col[i]===col) rows.push(i); }
-  rows.sort((a,b)=>V.freq[b]-V.freq[a]);
+  /* The listing is UNFILTERED in the nucleotides view, and filtered everywhere
+     else. That view paints from consVar, which buildConsensus fills from every
+     call in the table on purpose, so a filtered listing answered a different
+     question from the one the reader had clicked: "No calls at this position
+     under the current filters" beside a base plainly painted on screen. Same
+     view/filter split that made ntCellAt necessary, one layer up.
+
+     It is a change of SOURCE, not of presentation, so the panel says which one
+     it used rather than leaving two different meanings of "calls here" to be
+     told apart by counting. */
+  const unfiltered = viewMode==='nucleotides';
+  let rows=[];
+  if(unfiltered){
+    /* Both callers emit a row for the same change, so the raw table lists most
+       changes twice — the duplicate report that made 88 of 381 swine codons look
+       multi-call. Dedupe on position:alternative per sample, LoFreq taking the
+       representative slot because its frequency is the one that matches reads.
+       The filtered path never needed this because `keep` has usually already
+       thinned them; iterating V directly walks straight into it. */
+    const by=new Map();
+    for(let i=0;i<V.n;i++){
+      if(V.col[i]!==col) continue;
+      const k=V.row[i]+':'+V.pos[i]+':'+V.altnt[i];
+      if(!by.has(k)||V.method[i]===0) by.set(k,i);
+    }
+    rows=[...by.values()];
+  } else {
+    for(let n=0;n<keep.length;n++){ const i=keep[n]; if(V.col[i]===col) rows.push(i); }
+  }
+  // Which of them the current filters would show. Built once per render, not per
+  // row: `keep` runs to ~17k on this data and this is a click handler, not a frame.
+  const shown = unfiltered ? new Set(keep) : null;
+  /* With a base selected, the calls that change THAT base sort first. Not filtered
+     to them — the rest of the codon is the multi-call context the reader needs to
+     see — but they are what was clicked, so they lead and carry an accent. */
+  const onBase = i => ntSel() && changedNt(i)===selNt;
+  rows.sort((a,b)=> (onBase(b)-onBase(a)) || (V.freq[b]-V.freq[a]));
   const cur=curated.get(col);
   // calls != samples: a codon carrying two variants in one sample contributes
   // two rows, which is exactly the multi-variant-codon case flagged elsewhere
   const nSamples=new Set(rows.map(i=>V.row[i])).size;
+  /* With a base selected, say which one and what the reference carries there.
+     The panel is otherwise per-codon, so without this the reader has a one-base
+     selection band on screen and a panel that never acknowledges it. */
+  let ntLine='';
+  if(ntSel()&&p){
+    const cds=refCDS.get(p.product), st=(col-p.off)*3+selNt;
+    const b=cds&&st<cds.length?cds[st]:null;
+    ntLine=`<div class="sub">base ${selNt+1} of 3`+
+      (b?` · reference <b style="color:${NT_COL[b]||TH.ink}">${esc(b)}</b>`:'')+
+      `</div>`;
+  }
+  const nHidden = unfiltered ? rows.filter(i=>!shown.has(i)).length : 0;
   let html=`<div class="mut">${esc(p?p.product:'?')} ${aa}</div>`+
     `<div class="sub">${nSamples} of ${NT} samples`+
     `${rows.length!==nSamples?` · ${rows.length} calls`:''} here`+
-    `${p&&!p.primary?' · secondary ORF':''}</div>`+
+    `${p&&!p.primary?' · secondary ORF':''}</div>`+ntLine+
     (cur?`<div class="verdict warn"><b>Curated site</b>${esc(cur.join(', '))}</div>`:'');
-  if(!rows.length){ html+='<div class="empty">No calls at this position under the current filters.</div>'; }
+  if(!rows.length){
+    // Two different absences. Unfiltered, there is genuinely nothing called here;
+    // filtered, there may be plenty and the filters are hiding it. Saying the
+    // wrong one is how this panel misled in the first place.
+    html+=unfiltered
+      ? '<div class="empty">No calls at this position in the table.</div>'
+      : '<div class="empty">No calls at this position under the current filters.</div>';
+  }
   else{
     const nLow=rows.filter(i=>V.depth[i]<100).length;
     const mean=rows.reduce((a,i)=>a+V.freq[i],0)/rows.length;
     html+=`<dl class="dl"><dt>mean freq</dt><dd>${(mean*100).toFixed(2)}%</dd>`+
       `<dt>max freq</dt><dd>${(V.freq[rows[0]]*100).toFixed(2)}%</dd>`+
       `<dt>below depth 100</dt><dd class="${nLow?'bad':''}">${nLow}</dd></dl>`;
-    html+='<table class="site"><tr><th>sample</th><th>change</th><th>freq</th><th>depth</th></tr>';
+    // The nucleotide change is the headline in this view, so it gets its own
+    // column rather than being inferred from the codon in the variant panel.
+    html+='<table class="site"><tr><th>sample</th>'+
+      (unfiltered?'<th>base</th>':'')+
+      '<th>change</th><th>freq</th><th>depth</th></tr>';
     for(const i of rows.slice(0,60)){
       const refAA=V.ref[i]===255?'?':AAS[V.ref[i]], altAA=V.alt[i]===255?'?':AAS[V.alt[i]];
-      html+=`<tr data-i="${i}"><td>${esc(names[V.row[i]])}</td>`+
+      const hid = unfiltered && !shown.has(i);
+      const cls = [hid?'filt':'', onBase(i)?'onbase':''].filter(Boolean).join(' ');
+      html+=`<tr data-i="${i}"${cls?` class="${cls}"`:''}>`+
+        `<td>${esc(names[V.row[i]])}${hid?'<span class="ftag">filtered</span>':''}</td>`+
+        (unfiltered?`<td>${esc(V.refnt[i]||'?')}&gt;${esc(V.altnt[i]||'?')}</td>`:'')+
         `<td>${esc(refAA)}${V.aapos[i]}${esc(altAA)}</td>`+
         `<td>${(V.freq[i]*100).toFixed(2)}%</td>`+
         `<td class="${V.depth[i]<100?'bad':''}">${V.depth[i]}</td></tr>`;
     }
     html+='</table>';
     if(rows.length>60) html+=`<div class="note">…and ${rows.length-60} more</div>`;
+  }
+  /* The provenance line, and it goes UNDER the table on purpose: above, it read
+     as a caveat about the site; below, it reads as a note about the list — which
+     is what it is. Suppressed when there is no list: "every call at this codon,
+     deduplicated across callers" under an empty panel describes nothing, and the
+     empty message has already said the whole truth. */
+  if(unfiltered&&rows.length){
+    /* Only claim the base ordering when something is actually ordered by it.
+       The selected base often carries no call — the reader picked a third of a
+       codon whose change is in one of the other two — and "calls changing base 2
+       lead the list" then states a fact about an empty set, which reads as a
+       promise that some of the rows below are that base. */
+    const nOnBase=rows.filter(onBase).length;
+    html+=`<div class="note">Every call at this codon, deduplicated across callers. `+
+      `The nucleotides view paints all of them, so this list is not filtered.`+
+      (nHidden?` ${nHidden} of ${rows.length} `+(nHidden===1?'is':'are')+
+               ` hidden by the current filters, dimmed and tagged above.`:'')+
+      (ntSel()
+        ? (nOnBase?` ${nOnBase} ${nOnBase===1?'call changes':'calls change'} the selected `+
+                   `base ${selNt+1}, leading the list.`
+                 : ` No call here changes the selected base ${selNt+1}.`)
+        : '')+
+      `</div>`;
   }
   el.innerHTML=html;
   el.querySelectorAll('tr[data-i]').forEach(tr=>tr.onclick=()=>{
@@ -5021,6 +5160,32 @@ function cellAt(cx,cy){
     for(let c=c0;c<=c1;c++){ const b=cls[base+c]; if(b>bb){bb=b;best=vidx[base+c];} } }
   return best<0?null:{i:best};
 }
+/* Hit-test for the nucleotides view, which cannot use cellAt.
+
+   cellAt searches `cls` — the FILTERED call grid — while this view paints from
+   consVar, which buildConsensus fills from every call in the table on purpose:
+   a sample's consensus residue is a fact about the sample, not about the
+   filters you happen to be looking through. The two disagree by exactly the
+   calls the filters remove, so a click on a plainly visible base selected
+   nothing whenever that call was filtered out. Measured on the swine run at
+   the default nonsynonymous-only setting: 64 painted cells, 31 clickable —
+   every synonymous change was inert, which is most of what this view is FOR.
+
+   So hit-test what is drawn. No pixel tolerance: the cells here are at least
+   3 px wide (below that the view draws codon marks and selNt is not offered),
+   and a snap to a neighbouring codon would land on a different base. */
+function ntCellAt(cx,cy){
+  if(!ready||!consVar||cx<NAMES_W||cy<topH()) return null;
+  const dr=displayRowAt(cy); if(dr<0||dr>=NTvis) return null;
+  const sm=rowOrder[dr]; if(sm===undefined) return null;
+  const c=Math.floor(scrollCol+(cx-NAMES_W)/cw);
+  if(c<0||c>=NC) return null;
+  const vi=consVar[sm*NC+c];
+  return vi<0?null:{i:vi};
+}
+// One entry point, so the tooltip and the click can never disagree about what
+// is under the pointer.
+function hitAt(cx,cy){ return viewMode==='nucleotides'?ntCellAt(cx,cy):cellAt(cx,cy); }
 const tip=document.getElementById('tip');
 cv.addEventListener('mousemove',e=>{
   if(!drag&&!sizing){
@@ -5030,7 +5195,7 @@ cv.addEventListener('mousemove',e=>{
       : 'default';
   }
   const rect=cv.getBoundingClientRect();
-  const hit=cellAt(e.clientX-rect.left,e.clientY-rect.top);
+  const hit=hitAt(e.clientX-rect.left,e.clientY-rect.top);
   if(!hit){ tip.style.display='none'; return; }
   const i=hit.i, p=PROD.get(V.prod[i]);
   const refAA=V.ref[i]===255?'?':AAS[V.ref[i]], altAA=V.alt[i]===255?'?':AAS[V.alt[i]];
@@ -5077,7 +5242,13 @@ cv.addEventListener('mousedown',e=>{
         else qcManual.delete(names[sm]);
         savePresetState(); rebuildRowOrder(); schedule(); return;
       }
-      if(viewMode==='consensus'){        // names are the handle for expanding
+      /* Names are the handle for expanding, in BOTH views that show the band.
+         It was consensus-only while setViewMode deliberately kept the band open
+         across the switch to nucleotides — so an opened row survived into a view
+         that had no way to close it, and no way to open one either. The two have
+         to move together: whichever modes drawExpandedBand runs in are the modes
+         this must toggle in. */
+      if(viewMode==='consensus'||viewMode==='nucleotides'){
         if(expanded===sm) collapseSample(); else expandSample(sm);
         return;
       }
@@ -5148,11 +5319,24 @@ window.addEventListener('mouseup',e=>{
     if(cx>NAMES_W&&cx<cssW){
       if(cy<topH()){                     // track / ruler / reference -> site detail
         const c=Math.floor(scrollCol+(cx-NAMES_W)/cw);
-        if(c>=0&&c<NC){ selCol=c; selVariant=null; renderDetail(); schedule(); }
+        if(c>=0&&c<NC){
+          selCol=c; selVariant=null;
+          // The reference row draws bases in this view, so a click on it is a
+          // click on a base — take the one under the pointer.
+          selNt = viewMode==='nucleotides' ? ntUnder(cx,c) : null;
+          renderDetail(); schedule();
+        }
       } else {
-        const hit=cellAt(cx,cy);
-        if(hit){ selVariant=hit.i; selCol=V.col[hit.i]; selSample=V.row[hit.i]; renderDetail(); schedule(); }
-        else { selVariant=null; selCol=null; renderDetail(); schedule(); }
+        const hit=hitAt(cx,cy);
+        if(hit){
+          selVariant=hit.i; selCol=V.col[hit.i]; selSample=V.row[hit.i];
+          if(viewMode==='nucleotides'){
+            const k=changedNt(hit.i);
+            selNt = k>=0 ? k : ntUnder(cx,selCol);
+          } else selNt=null;
+          renderDetail(); schedule();
+        }
+        else { selVariant=null; selCol=null; selNt=null; renderDetail(); schedule(); }
       }
     }
   }
@@ -5450,10 +5634,18 @@ async function doExport(){
 
 function setViewMode(m){
   if(m===viewMode) return;
+  const wasBand = viewMode==='consensus'||viewMode==='nucleotides';
   viewMode=m;
   // Nucleotides shows the same expanded band as consensus, so leaving that mode
   // for this one must not silently close the row the reader had opened.
   if(m!=='consensus'&&m!=='nucleotides'){ expanded=null; pile=null; }
+  // Carried across, the band keeps whatever it had computed for the mode it was
+  // opened in. Refresh it against the current view rather than leaving a stale
+  // one on screen — same work expandSample does, without the toggle.
+  else if(wasBand&&expanded!==null) refreshBand();
+  // A base selection belongs to the nucleotides view; anywhere else selCol is
+  // the codon and a stored third would narrow the next selection band silently.
+  if(m!=='nucleotides') selNt=null;
   try{ lsSet('viewmode',m); }catch(e){}
   // The codon table is 57 MB, so it is read on first use of this view rather
   // than at open. schedule() again on arrival — the first frame draws empty.
