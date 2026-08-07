@@ -8,9 +8,12 @@ unchanged — this exists to remove three limits of running it in a browser.
 - **The folder picker forgets.** In the browser the run directory has to be
   re-chosen every session, because a `File` handle cannot be persisted. The
   shell remembers the last directory and reopens it.
-- **`file://` cannot fetch.** So the dev path needs a web server, which cannot
-  read `~/Documents` under macOS TCC — the reason development has been running
-  against a copy in a scratch directory rather than the real file.
+- **`file://` cannot fetch.** So the dev path needs a web server, and one could
+  not read `~/Documents` under macOS TCC when the repo lived there — the reason
+  development runs against a copy in a scratch directory rather than the real
+  file. The repo has since moved to `~/Dropbox/Research/0_Github/FluLens`; the
+  scratch copy stayed, because serving the canonical file means testing whatever
+  state it happens to be saved in.
 - **Ranged BAM reads.** The browser path depends on the dev server honouring
   `Range`; native file reads have no such dependency.
 
