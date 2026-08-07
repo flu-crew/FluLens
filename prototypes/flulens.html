@@ -379,8 +379,8 @@ comparison. The pattern across many codons is the signal; one cell is not.</div>
                nothing stored the select falls to its first option and the
                control disagrees with what is actually being drawn. -->
           <option value="none">mono (contrast)</option>
-          <option value="clustal" selected>ClustalX</option>
-          <option value="zappo">Zappo</option>
+          <option value="clustal">ClustalX</option>
+          <option value="zappo" selected>Zappo</option>
           <option value="taylor">Taylor</option>
           <option value="shapely">Shapely</option>
           <option value="lesk">Lesk</option>
@@ -453,7 +453,11 @@ comparison. The pattern across many codons is the signal; one cell is not.</div>
           <option value="flumut">FluMut markers only</option>
           <option value="either">curated or FluMut</option>
         </select></div>
+      <!-- Caller order is LoFreq · iVar · GATK4 everywhere in the app. The two
+           that report an allele fraction sit together; the genotype caller is
+           last. -->
       <div class="fld"><label><input type="checkbox" id="flofreq" checked> LoFreq</label>
+        <label><input type="checkbox" id="fivar" checked> iVar</label>
         <label><input type="checkbox" id="fgatk" checked> GATK4</label></div>
       <div class="note" id="filternote"> </div>
     </div>
@@ -685,7 +689,14 @@ const AA_SCHEMES={
 };
 // ClustalX by default: the residue classes are the thing most readers want to
 // see first, and 'mono' hides them until someone discovers the selector.
-let aaScheme='clustal';
+/* Zappo, not ClustalX, since 2026-08-07. ClustalX puts a large share of the
+   alphabet on one blue, which on the mid-ramp cell fills this app draws is
+   hard to tell apart; Zappo's physicochemical groups separate more cleanly
+   against those backgrounds. Both are established viewer conventions, so this
+   is a choice between two things biologists already read, not a new palette.
+   The `selected` attribute on the <option> must track this — see the note
+   there; a stored preference still wins over both. */
+let aaScheme='zappo';
 /* Outline weight behind a coloured letter, as a fraction of glyph height.
    strokeText centres the stroke on the path, so half of it grows outward —
    which is why the first attempt at 0.16 read as a thick casing rather than a
@@ -1232,6 +1243,25 @@ function fmMarkColumns(){
   return out;
 }
 
+/* ---- callers ----------------------------------------------------------------
+   Three of them since 2026-08-07, and the ORDER here is the order they appear
+   everywhere: filters, the caller row in the panel, the export column. LoFreq
+   and iVar both report an allele FRACTION; GATK4 reports a genotype, which is
+   why it sits at the end rather than in the middle of the two that agree about
+   what they are measuring.
+
+   `method` was a 0/1 flag and is now an index, so anything that tested it for
+   truthiness (`V.method[i] ? 'GATK4' : 'LoFreq'`) would silently call an iVar
+   row GATK4. Those are all gone; use CALLER[] and the M_* constants. An
+   unrecognised name lands on LoFreq, which is what the old code did with
+   anything that was not the string 'GATK4'. */
+const CALLER=['LoFreq','iVar','GATK4'];
+const M_LOFREQ=0, M_IVAR=1, M_GATK=2;
+const callerCode=s=> s==='GATK4'?M_GATK : s==='iVar'?M_IVAR : M_LOFREQ;
+// LoFreq and iVar measure the same quantity; GATK4 does not. Several rules care
+// about that distinction rather than about which caller it is.
+const isFractionCaller=i=>V.method[i]!==M_GATK;
+
 /* ---- amino-acid table ------------------------------------------------------ */
 function parseAA(text, gtfLens){
   const lines=text.split(/\r?\n/);
@@ -1250,7 +1280,11 @@ function parseAA(text, gtfLens){
        LoFreq's own, LoFreq's borrowed for a matching GATK4 row, or NA when only
        GATK4 saw the change. Older tables have none of these and fall back to
        reconcileFrequencies()'s own matching. */
-    afType:ix('af_type'), afrac:ix('allele_fraction'), vid:ix('variant_id')};
+    afType:ix('af_type'), afrac:ix('allele_fraction'), vid:ix('variant_id'),
+    /* iVar's own PASS verdict and the LoFreq-vs-iVar fraction gap, both added
+       by convertVCFtoTable.R in 2026-08. Absent in older tables, which is why
+       every read of them is guarded rather than assumed. */
+    ivarPass:ix('ivar_pass'), afConf:ix('af_conflict')};
   if(C.sample<0||C.locus<0||C.aapos<0||C.freq<0)
     throw new Error('not an all_sample_amino_acids.txt');
 
@@ -1265,7 +1299,7 @@ function parseAA(text, gtfLens){
        is assumed to have come from the METADATA csv, so a new pipeline column
        silently becomes a sortable per-sample field holding the first row's
        value — wrong, and wrong in a way that looks like a working feature. */
-    'variant_id','af_type','allele_fraction']);
+    'variant_id','af_type','allele_fraction','ivar_pass','af_conflict']);
   metaCols=head.filter(h=>h&&!KNOWN.has(h));
   // Reset per run: these columns arrived with the table, not from a file the
   // user chose, and carrying a previous run's filename over would be a lie.
@@ -1318,7 +1352,7 @@ function parseAA(text, gtfLens){
   const sampleIx=new Map(); names=[];
   const A={row:[],col:[],freq:[],depth:[],qual:[],alt:[],ref:[],nonsyn:[],
            method:[],pos:[],aapos:[],prod:[],refnt:[],altnt:[],refcod:[],altcod:[],seg:[],
-           afType:[],afrac:[]};
+           afType:[],afrac:[],ivarPass:[],afConf:[]};
   /* `+''` is 0, not NaN. A missing allele_fraction parsed with a bare `+` would
      become a 0% call that passes the min-freq filter and paints as absent, so
      blank and R's "NA" both have to be turned into NaN explicitly. */
@@ -1342,12 +1376,14 @@ function parseAA(text, gtfLens){
     A.ref.push(C.refaa>=0&&AAIDX.has(f[C.refaa])?AAIDX.get(f[C.refaa]):255);
     A.alt.push(C.altaa>=0&&AAIDX.has(f[C.altaa])?AAIDX.get(f[C.altaa]):255);
     A.nonsyn.push(C.chg>=0&&f[C.chg]==='YES'?1:0);
-    A.method.push(f[C.method]==='GATK4'?1:0);
+    A.method.push(callerCode(f[C.method]));
     A.pos.push(+f[C.pos]||0); A.aapos.push(r.ap); A.prod.push(r.prod); A.seg.push(r.seg);
     A.refnt.push(C.ref>=0?f[C.ref]:''); A.altnt.push(C.alt>=0?f[C.alt]:'');
     A.refcod.push(C.refcod>=0?f[C.refcod]:''); A.altcod.push(C.altcod>=0?f[C.altcod]:'');
     A.afType.push(C.afType<0?0:(f[C.afType]==='genotype'?2:f[C.afType]==='fraction'?1:0));
     A.afrac.push(C.afrac>=0?afNum(f[C.afrac]):NaN);
+    A.ivarPass.push(C.ivarPass>=0?f[C.ivarPass]:'');
+    A.afConf.push(C.afConf>=0?afNum(f[C.afConf]):NaN);
   }
   const n=A.row.length;
   V={n, row:Int32Array.from(A.row), col:Int32Array.from(A.col),
@@ -1358,6 +1394,7 @@ function parseAA(text, gtfLens){
      prod:A.prod, seg:A.seg, refnt:A.refnt, altnt:A.altnt,
      refcod:A.refcod, altcod:A.altcod,
      afType:Uint8Array.from(A.afType), afrac:Float32Array.from(A.afrac),
+     ivarPass:A.ivarPass, afConf:Float32Array.from(A.afConf),
      /* Both columns, not either. af_type alone would mark every GATK4 row a
         genotype with no fraction to borrow, losing exactly the reconciliation
         the columns exist to provide — worse than not reading them at all. */
@@ -1493,6 +1530,96 @@ async function loadVCF(sample){
   }
   vcfCache.set(sample,map);
   return map;
+}
+
+/* ---- lazy per-sample iVar TSV (strand + PASS) -------------------------------
+   iVar's own strand evidence, and the reason it is worth reading rather than
+   falling back on LoFreq's DP4 at the same position.
+
+   REF_DP/REF_RV/ALT_DP/ALT_RV are the same four numbers DP4 carries, stated as
+   a total and a reverse count instead of forward and reverse:
+
+       rf = REF_DP - REF_RV     rr = REF_RV
+       af = ALT_DP - ALT_RV     ar = ALT_RV
+
+   So it is normalised INTO a DP4 string here, and every rule downstream —
+   assessCore, the strand block, the alt-read count — keeps one shape and one
+   set of thresholds regardless of which caller produced the row.
+
+   Reading LoFreq's record for an iVar row would have been easy and wrong twice
+   over: the two callers were given different mpileup filters on purpose (LoFreq
+   requires proper pairs, iVar counts anomalous ones), so the numbers are not
+   interchangeable, and where LoFreq never called the position there is nothing
+   to borrow at all — which is most iVar rows on a run where iVar applies the
+   depth floor at call time and LoFreq does not.
+
+   PASS is iVar's Fisher exact test against the sequencing error rate, and it is
+   the GATK4 FILTER situation exactly: iVar ANNOTATES rather than removes, so a
+   row it flagged as failing arrives in the table looking clean. Measured on
+   MC-497, 25 of 34 rows are PASS=FALSE. The pipeline now carries this as the
+   `ivar_pass` column too; this reader is what makes it available per position
+   even for a table written before that column existed. */
+let ivarCache=new Map();
+function findIvar(sample){
+  const leaf=`/${sample}/ivar-called-variants.tsv`;
+  const exact='vcf_files'+leaf;
+  if(files.has(exact)) return {f:files.get(exact), path:exact};
+  for(const [p,f] of files) if(p.endsWith(leaf)) return {f, path:p};
+  return {f:null, path:'*'+leaf};
+}
+async function loadIvar(sample){
+  if(ivarCache.has(sample)) return ivarCache.get(sample);
+  const {f,path:want}=findIvar(sample);
+  const map=new Map();
+  map.__path=want; map.__found=!!f;
+  if(f) try{
+    const text=await f.text();
+    const lines=text.split(/\r?\n/);
+    // Column positions are read from the header rather than assumed. iVar emits
+    // six further columns (GFF_FEATURE … POS_AA) only when it was given a GFF,
+    // which Flumina deliberately does not do — so the row length varies between
+    // runs and fixed indexes would be a silent mis-read on one of them.
+    const H={}; (lines[0]||'').split('\t').forEach((h,k)=>{ H[h.trim()]=k; });
+    if(H.REGION===undefined||H.POS===undefined) { ivarCache.set(sample,map); return map; }
+    for(let n=1;n<lines.length;n++){
+      const c=lines[n].split('\t'); if(c.length<=H.ALT_RV) continue;
+      const alt=c[H.ALT];
+      // Indels are dropped here as they are in the pipeline: iVar writes them
+      // as +A / -T in ALT, every coordinate in this app is SNP-based, and a
+      // key collision with the SNP at the same position would silently give
+      // one of them the other's strand counts.
+      if(!alt||alt[0]==='+'||alt[0]==='-') continue;
+      const rdp=+c[H.REF_DP], rrv=+c[H.REF_RV], adp=+c[H.ALT_DP], arv=+c[H.ALT_RV];
+      if(!Number.isFinite(rdp)||!Number.isFinite(adp)) continue;
+      map.set(shortLocus(c[H.REGION])+':'+c[H.POS]+':'+alt, {
+        ref:c[H.REF], alt,
+        info:{DP4:[rdp-rrv, rrv, adp-arv, arv].join(',')},
+        pass:c[H.PASS], freq:+c[H.ALT_FREQ], depth:+c[H.TOTAL_DP],
+        qual:c[H.ALT_QUAL]
+      });
+    }
+  }catch(e){}
+  ivarCache.set(sample,map);
+  return map;
+}
+/* Keyed on the ALT base as well as the position, unlike the LoFreq lookup.
+   iVar reports every alternative it sees at a position as its own row, so two
+   rows can share a position and differ only in ALT; keying on position alone
+   would hand the second one the first one's strand counts. */
+function ivarRecOf(i){
+  const m=ivarCache.get(names[V.row[i]]);
+  return m?m.get(V.seg[i]+':'+V.pos[i]+':'+V.altnt[i])||null:null;
+}
+/* The strand record for a call, from whichever caller actually produced it.
+
+   iVar rows read iVar's TSV. Everything else keeps the existing behaviour of
+   reading the LoFreq VCF at that position — for a LoFreq row that is its own
+   record, and for a GATK4 row it is a borrow, since GATK4's VCF carries no DP4
+   at all. Where LoFreq is silent too there is nothing to read, and the call
+   assesses as UNKNOWN rather than as poor: on the swine run that is the seven
+   GATK4-only calls sitting at depth 2-8. */
+function strandRecOf(i){
+  return V.method[i]===M_IVAR ? ivarRecOf(i) : vcfRecOf(i);
 }
 
 /* ---- IRMA assembly recovery -----------------------------------------------
@@ -1690,9 +1817,24 @@ function drawDepth(bx,y,bw,H,rec,c0,c1,msg){
     const cbase=expanded*NC;          // not `base` — that is the baseline Y above
     ctx.strokeStyle=TH.dropLine; ctx.globalAlpha=.85; ctx.lineWidth=1;
     ctx.beginPath();
+    /* The line has to land under the mark it belongs to, and in the nucleotides
+       view that mark is one BASE wide, not one codon. Drawn at the codon's
+       midpoint it pointed at the middle base every time — dead on for a change
+       in base 2 and a full base-width out for changes in base 1 or 3, which is
+       most of them. Measured at PB1 415 (CTA→CTG, third base): line at 315.5,
+       base centred at 345. */
+    const w3=cw/3, ntMode=viewMode==='nucleotides'&&cw>=3;
     for(let c=c0;c<c1;c++){
       if(consAlt[cbase+c]===255) continue;
-      const x=Math.round(bx+(c-scrollCol)*cw+Math.max(1,cw)/2)+.5;
+      const x0=bx+(c-scrollCol)*cw;
+      let cx=x0+Math.max(1,cw)/2;
+      if(ntMode){
+        const vi=consVar[cbase+c], k=vi>=0?changedNt(vi):-1;
+        // k<0 means the codons are not both known, so there is no base to point
+        // at and the codon midpoint is the honest fallback.
+        if(k>=0) cx=x0+k*w3+w3/2;
+      }
+      const x=Math.round(cx)+.5;
       ctx.moveTo(x,y+16); ctx.lineTo(x,base);
     }
     ctx.stroke(); ctx.globalAlpha=1;
@@ -1835,7 +1977,8 @@ async function devBootstrap(root='run'){
     for(const sdir of await listDir(dir)){
       const name=sdir.replace(/\/$/,'');
       if(!name||name.includes('.')) continue;
-      for(const leaf of ['lofreq-called-variants.vcf','gatk4-filtered-snps.vcf']){
+      for(const leaf of ['lofreq-called-variants.vcf','ivar-called-variants.tsv',
+                         'gatk4-filtered-snps.vcf']){
         const p=`${dir}/${name}/${leaf}`;
         m.set(p, shim(`${root}/${p}`));
       }
@@ -2017,6 +2160,21 @@ async function loadRun(){
         : nAllVcf
           ? `<span class="bad">✕</span> ${nAllVcf} VCFs found but none match the\n   table's sample names — no strand detail\n`
           : `<span class="warn">·</span> no VCFs — no strand detail\n`)+
+      /* iVar's TSVs, reported separately and only when the table actually
+         carries iVar rows. A run called without iVar should not be told it is
+         missing a file it was never supposed to have; a run WITH iVar rows and
+         no TSVs is missing strand evidence for all of them, and that has to be
+         visible rather than showing up as a panel full of "cannot assess". */
+      (()=>{
+        let nIvarRows=0; for(let i=0;i<V.n;i++) if(V.method[i]===M_IVAR) nIvarRows++;
+        if(!nIvarRows) return '';
+        const nTsv=names.reduce((a,nm)=>a+(findIvar(nm).f?1:0),0);
+        return nTsv===NT
+          ? `<span class="ok">✓</span> iVar TSVs for ${nTsv} of ${NT} samples\n`
+          : nTsv
+            ? `<span class="warn">·</span> iVar TSVs for ${nTsv} of ${NT} samples —\n   no strand detail for the rest\n`
+            : `<span class="bad">✕</span> ${nIvarRows.toLocaleString()} iVar calls but no iVar TSVs\n   — no strand detail for any of them\n`;
+      })()+
       /* Which of the two reconciliation paths ran. Worth a line because the
          numbers are identical either way on this run, so there is otherwise no
          way to tell whether the table stated it or the app worked it out — and
@@ -2043,7 +2201,7 @@ async function loadRun(){
     manualOrder=null; qcManual=new Map(); selSample=-1;
     renderMetaPicker();
     // gatkCache too, or a second run shows the first run's FILTER values
-    hidden=new Set(); vcfCache=new Map(); gatkCache=new Map();
+    hidden=new Set(); vcfCache=new Map(); gatkCache=new Map(); ivarCache=new Map();
     selVariant=null; selCol=null; selNt=null;
     assess=null; altReads=null; assessStats=null; assessReady=false; assessBusy=null;
     await phase('laying out');
@@ -2091,6 +2249,7 @@ function applyFilters(){
   const nsOnly=document.getElementById('fnonsyn').checked;
   const sites=document.getElementById('fsites').value;
   const useLo=document.getElementById('flofreq').checked;
+  const useIv=document.getElementById('fivar').checked;
   const useGa=document.getElementById('fgatk').checked;
 
   cls=new Uint8Array(NT*NC); vidx=new Int32Array(NT*NC).fill(-1);
@@ -2106,8 +2265,9 @@ function applyFilters(){
       if(sites==='flumut'  && !f) continue;
       if(sites==='either'  && !c && !f) continue;
     }
-    if(V.method[i]===0 && !useLo) continue;
-    if(V.method[i]===1 && !useGa) continue;
+    if(V.method[i]===M_LOFREQ && !useLo) continue;
+    if(V.method[i]===M_IVAR   && !useIv) continue;
+    if(V.method[i]===M_GATK   && !useGa) continue;
     /* Both of these leave a call alone when its supporting evidence is UNKNOWN
        rather than low — a GATK4 genotype with no LoFreq counterpart has no DP4
        to count, and hiding it would be reading "not measured" as "measured and
@@ -2549,7 +2709,7 @@ function renderMetaPicker(){
   });
 }
 
-for(const id of ['fdepth','ffreq','falt','fnonsyn','fsites','fassess','flofreq','fgatk'])
+for(const id of ['fdepth','ffreq','falt','fnonsyn','fsites','fassess','flofreq','fivar','fgatk'])
   document.getElementById(id).addEventListener('input',()=>{
     document.getElementById('vdepth').textContent=document.getElementById('fdepth').value;
     document.getElementById('vfreq').textContent=document.getElementById('ffreq').value+'%';
@@ -2577,19 +2737,19 @@ for(const id of ['fdepth','ffreq','falt','fnonsyn','fsites','fassess','flofreq',
    one click and they persist. The built-ins are starting points, not defaults
    to be precious about — "Save as…" over one to make it yours. */
 const BUILTIN_PRESETS={
-  'Default':          {depth:100,freq:0,nonsyn:false,sites:'all',lofreq:true,gatk:true,
+  'Default':          {depth:100,freq:0,nonsyn:false,sites:'all',lofreq:true,ivar:true,gatk:true,
                        hidden:[],hideEmpty:false,hideFail:false,
                        qc:{minCalls:1,minMedDepth:200,maxLowFrac:0.25},sort:[]},
-  'High-confidence':  {depth:500,freq:2,nonsyn:true,sites:'all',lofreq:true,gatk:true,
+  'High-confidence':  {depth:500,freq:2,nonsyn:true,sites:'all',lofreq:true,ivar:true,gatk:true,
                        hidden:[],hideEmpty:true,hideFail:true,
                        qc:{minCalls:5,minMedDepth:500,maxLowFrac:0.10},sort:[]},
-  'Curated screen':   {depth:100,freq:0,nonsyn:true,sites:'curated',lofreq:true,gatk:true,
+  'Curated screen':   {depth:100,freq:0,nonsyn:true,sites:'curated',lofreq:true,ivar:true,gatk:true,
                        hidden:[],hideEmpty:true,hideFail:false,
                        qc:{minCalls:1,minMedDepth:200,maxLowFrac:0.25},sort:[]},
-  'Consensus level':  {depth:100,freq:50,nonsyn:false,sites:'all',lofreq:true,gatk:true,
+  'Consensus level':  {depth:100,freq:50,nonsyn:false,sites:'all',lofreq:true,ivar:true,gatk:true,
                        hidden:[],hideEmpty:true,hideFail:false,
                        qc:{minCalls:1,minMedDepth:100,maxLowFrac:0.50},sort:[]},
-  'Everything':       {depth:0,freq:0,nonsyn:false,sites:'all',lofreq:true,gatk:true,
+  'Everything':       {depth:0,freq:0,nonsyn:false,sites:'all',lofreq:true,ivar:true,gatk:true,
                        hidden:[],hideEmpty:false,hideFail:false,
                        qc:{minCalls:0,minMedDepth:0,maxLowFrac:1},sort:[]}
 };
@@ -2630,7 +2790,7 @@ function currentState(){
   return {depth:+g('fdepth').value, freq:+g('ffreq').value,
     alt:+g('falt').value, assess:g('fassess').value,
     nonsyn:g('fnonsyn').checked, sites:g('fsites').value,
-    lofreq:g('flofreq').checked, gatk:g('fgatk').checked,
+    lofreq:g('flofreq').checked, ivar:g('fivar').checked, gatk:g('fgatk').checked,
     hidden:[...hidden], hideEmpty, hideFail,
     qc:{...qcRules}, sort:sortKeys.map(k=>({...k})),
     qcManual:[...qcManual.entries()]};
@@ -2653,6 +2813,11 @@ function applyState(st){
   // `curated: true` is how the older presets spelled this before the selector
   g('fsites').value = st.sites || (st.curated ? 'curated' : 'all');
   g('flofreq').checked=st.lofreq!==false; g('fgatk').checked=st.gatk!==false;
+  /* A preset saved before iVar existed carries no `ivar` key at all, and
+     `!!undefined` would turn that silence into an explicit OFF — the same
+     way `!!st.nonsyn` did when the nonsyn default moved. Absent means take
+     the default, which for a caller is shown. */
+  g('fivar').checked=st.ivar!==false;
   g('vdepth').textContent=st.depth; g('vfreq').textContent=st.freq+'%';
   hidden=new Set(st.hidden||[]);
   hideEmpty=!!st.hideEmpty; g('hideempty').checked=hideEmpty;
@@ -2974,7 +3139,11 @@ function drawNucleotides(bx,by,bw,bh,c0,c1,r0,r1,rh,expH,expPos){
   const letters = cw>=21 && rh>=9;      // room for three legible glyphs
   const w3=cw/3;
   let n=0;
-  if(letters) ctx.font=Math.min(rh-2,Math.floor(w3*1.4))+'px ui-monospace,monospace';
+  /* 1.6, not 1.4. A monospace glyph advances about 0.6em, so a font of size F
+     needs 0.6F of width — the widest that fits w3 is w3/0.6 = 1.67*w3, and 1.4
+     left about a fifth of the cell unused on every letter. Still capped by the
+     row height, which is what binds once the cell is square. */
+  if(letters) ctx.font=Math.min(rh-2,Math.floor(w3*1.6))+'px ui-monospace,monospace';
   for(let r=r0;r<r1;r++){
     const sm=rowOrder[r]; if(sm===undefined) continue;
     const base=sm*NC, y=__yOf(r);
@@ -3059,10 +3228,10 @@ function reconcileFrequencies(){
      and a GATK4 call borrows a fraction measured somewhere else. */
   const lo=new Map();
   for(let i=0;i<V.n;i++)
-    if(V.method[i]===0) lo.set(V.row[i]+'|'+V.seg[i]+'|'+V.pos[i]+'|'+V.altnt[i], i);
+    if(V.method[i]===M_LOFREQ) lo.set(V.row[i]+'|'+V.seg[i]+'|'+V.pos[i]+'|'+V.altnt[i], i);
   let borrowed=0, genotype=0;
   for(let i=0;i<V.n;i++){
-    if(V.method[i]!==1) continue;
+    if(V.method[i]!==M_GATK) continue;
     const j=lo.get(V.row[i]+'|'+V.seg[i]+'|'+V.pos[i]+'|'+V.altnt[i]);
     if(j!==undefined){ V.freq[i]=V.freq[j]; afSource[i]=1; borrowed++; }
     else { afSource[i]=2; genotype++; }
@@ -3125,7 +3294,7 @@ function assessCore(i,out){
   out=out||_core;
   out.verdict=ASSESS.UNKNOWN; out.alt=-1; out.skew=NaN;
   out.altFrac=NaN; out.refFrac=NaN; out.strand=STRAND_NONE;
-  const rec=vcfRecOf(i);
+  const rec=strandRecOf(i);
   const dp4=rec&&rec.info.DP4;
   if(!dp4) return out;
   const d=dp4.split(','); if(d.length!==4) return out;
@@ -3210,7 +3379,9 @@ function ensureAssessments(){
   if(assessBusy) return assessBusy;
   const note=document.getElementById('assessnote');
   if(note) note.textContent='reading VCFs to assess every call…';
-  assessBusy=Promise.all(names.map(n=>loadVCF(n))).then(()=>{
+  // Both callers that carry strand evidence, or every iVar row would assess
+  // as UNKNOWN for want of a file nothing had read.
+  assessBusy=Promise.all(names.map(n=>Promise.all([loadVCF(n),loadIvar(n)]))).then(()=>{
     computeAssessments(); assessReady=true; assessBusy=null;
     if(note) note.textContent=assessNote();
   });
@@ -3863,7 +4034,17 @@ function rowH(){ return rowPx>0?rowPx:autoRowH(); }
    correct and useless. So rows never go below the height they would get on
    their own, and the cells turn square the moment the columns grow past it.
    max() means that crossover is continuous: nothing jumps as you zoom in. */
-function squareRowPx(){ return Math.max(cw, autoRowH()); }
+/* Square cells square THE CELL YOU ARE LOOKING AT, and in the nucleotides view
+   that is a base, not a codon. Squaring the codon there made every base a third
+   as wide as it was tall — a 1:3 sliver — and the glyph inside it is then capped
+   by the width, so the letters stayed small however tall the rows grew. Matching
+   the row height to the base width instead makes the cell square, lets the glyph
+   use the full height, and fits three times as many samples on screen at the
+   same zoom. */
+function squareRowPx(){
+  const unit = viewMode==='nucleotides' ? cw/3 : cw;
+  return Math.max(unit, autoRowH());
+}
 // The names pane splits into the sample name plus one narrow column per shown
 // metadata field.
 function metaW(){ return metaShow.length*META_COL_W; }
@@ -4072,7 +4253,7 @@ function draw(){
        codon-wide cell is not what it caches. */
     if(viewMode==='nucleotides' && cw>=3){
       const w3=cw/3, showLetters = cw>=21;
-      ctx.font=Math.min(REF_H-3,Math.floor(w3*1.4))+'px ui-monospace,monospace';
+      ctx.font=Math.min(REF_H-3,Math.floor(w3*1.6))+'px ui-monospace,monospace';
       ctx.textAlign='center';
       for(let c=c0;c<c1;c++){
         const pi=colProd[c]; if(pi===undefined||pi<0) continue;
@@ -4810,7 +4991,11 @@ async function renderVariant(el,i){
      this app is otherwise careful about everywhere. The later `await loadVCF`
      is now a cache hit, so this costs nothing. */
   await loadVCF(names[V.row[i]]);
-  if(V.method[i]===1) await loadGATK(names[V.row[i]]);
+  // Same reason the LoFreq read is awaited: assessDetail reads the record
+  // synchronously while the HTML is built, so an unawaited load would have
+  // the assessment reporting absence of evidence as evidence of absence.
+  if(V.method[i]===M_IVAR) await loadIvar(names[V.row[i]]);
+  if(V.method[i]===M_GATK) await loadGATK(names[V.row[i]]);
   const p=PROD.get(V.prod[i]);
   const refAA=V.ref[i]===255?'?':AAS[V.ref[i]], altAA=V.alt[i]===255?'?':AAS[V.alt[i]];
   const cur=curated.get(V.col[i]);
@@ -4824,7 +5009,7 @@ async function renderVariant(el,i){
   for(let n=0;n<V.n;n++){
     if(V.row[n]!==V.row[i]||V.col[n]!==V.col[i]) continue;
     const k=V.pos[n]+':'+V.altnt[n];
-    if(!mateBy.has(k)||V.method[n]===0) mateBy.set(k,n);
+    if(!mateBy.has(k)||V.method[n]===M_LOFREQ) mateBy.set(k,n);
   }
   const codonMates=[...mateBy.values()];
   const sameCodon=codonMates.length;
@@ -4883,15 +5068,27 @@ async function renderVariant(el,i){
         return a>=0 ? a.toLocaleString()+' supporting'
                     : '<span class="dim">no DP4 in the LoFreq VCF for this position</span>'; })()}</dd>
       <dt>quality</dt><dd>${V.qual[i]}</dd>
-      <dt>caller</dt><dd>${V.method[i]?'GATK4':'LoFreq'}${
+      <dt>caller</dt><dd>${CALLER[V.method[i]]}${
         afSource&&afSource[i]===1?' <span style="opacity:.6">· AF from LoFreq</span>':''}${
         isGenotypeAF(i)?' <span style="opacity:.6">· genotype</span>':''}${
         /* Stated for every GATK4 row, not just the uncorroborated ones. On the
            swine run all 100 GATK4 records are non-PASS, so a reader who only saw
            it on the odd one would reasonably assume the rest had passed. */
-        (()=>{ const f=V.method[i]?gatkFilterOf(i):null;
+        (()=>{ const f=V.method[i]===M_GATK?gatkFilterOf(i):null;
           return f&&f!=='PASS'&&f!=='.'
-            ? ` <span class="warn">· GATK4 FILTER ${esc(f)}</span>` : ''; })()}</dd>
+            ? ` <span class="warn">· GATK4 FILTER ${esc(f)}</span>` : ''; })()}${
+        /* The same situation for iVar, and stated on the same terms. iVar's
+           PASS is its Fisher exact test against the sequencing error rate, and
+           like VariantFiltration it ANNOTATES rather than removes — 25 of 34
+           rows on MC-497 are FALSE. A row that failed its own caller's test
+           must not look identical to one that passed. Shown from the TSV where
+           it has been read, falling back to the pipeline's ivar_pass column. */
+        (()=>{ if(V.method[i]!==M_IVAR) return '';
+          const r=ivarRecOf(i);
+          const p=r?r.pass:(V.ivarPass?V.ivarPass[i]:'');
+          if(p==='FALSE') return ` <span class="warn">· iVar PASS false</span>`;
+          if(p==='TRUE')  return ` <span style="opacity:.6">· iVar PASS</span>`;
+          return ''; })()}</dd>
       <dt>nt position</dt><dd>${V.pos[i]} (${esc(V.refnt[i])}→${esc(V.altnt[i])})</dd>
       <dt>codon</dt><dd>${esc(V.refcod[i]||'?')} → ${esc(V.altcod[i]||'?')}</dd>
       <dt>segment</dt><dd>${esc(V.seg[i])}</dd>
@@ -4927,18 +5124,29 @@ async function renderVariant(el,i){
       : `${rd.toLocaleString()} · ${segRecovered(rec)} of 8 segments recovered`;
   });
 
-  // Strand detail comes from the raw LoFreq VCF, read on demand for this sample
-  const vcf=await loadVCF(names[V.row[i]]);
-  const rec=vcf.get(V.seg[i]+':'+V.pos[i]);
+  /* Strand detail comes from the caller that produced THIS row, read on demand:
+     the LoFreq VCF for a LoFreq call, the iVar TSV for an iVar call. Both are
+     normalised to DP4, so everything below is caller-agnostic — only the file
+     that was missing, and the reason it matters, differ. */
+  const src = V.method[i]===M_IVAR
+    ? await loadIvar(names[V.row[i]])
+    : await loadVCF(names[V.row[i]]);
+  const vcf=src;
+  const rec=strandRecOf(i);
   const t=document.getElementById('trust'); if(!t) return;
   if(!rec){
-    // Say which of the three possible reasons it actually is, rather than
-    // listing them and leaving the reader to guess.
+    // Say which of the reasons it actually is, rather than listing them and
+    // leaving the reader to guess.
     let why;
     if(!vcf.__found)
       why=`<b>${esc(vcf.__path)}</b> is not in the opened folder, so strand detail `+
           `is unavailable. Open the run directory that contains vcf_files/.`;
-    else if(V.method[i]===1){
+    else if(V.method[i]===M_IVAR)
+      why=`iVar called this, but its TSV has no record for `+
+          `<b>${esc(V.seg[i])}:${V.pos[i]} ${esc(V.altnt[i])}</b>. The table and the `+
+          `TSV are out of step — the amino-acid table was most likely built from a `+
+          `different run than the one opened here.`;
+    else if(V.method[i]===M_GATK){
       const flt=gatkFilterOf(i);
       /* Two different situations were being given one explanation. A GATK4 call
          that LoFreq also reported is the routine consensus-level case. A GATK4
@@ -5016,7 +5224,7 @@ function renderSite(el,col){
     for(let i=0;i<V.n;i++){
       if(V.col[i]!==col) continue;
       const k=V.row[i]+':'+V.pos[i]+':'+V.altnt[i];
-      if(!by.has(k)||V.method[i]===0) by.set(k,i);
+      if(!by.has(k)||V.method[i]===M_LOFREQ) by.set(k,i);
     }
     rows=[...by.values()];
   } else {
@@ -5441,7 +5649,8 @@ function exportProvenance(){
   L.push(`nonsynonymous_only,${document.getElementById('fnonsyn').checked}`);
   L.push(`sites,${g('fsites')}`);
   L.push(`assessment_filter,${g('fassess')}`);
-  L.push(`callers,${document.getElementById('flofreq').checked?'LoFreq ':''}${document.getElementById('fgatk').checked?'GATK4':''}`);
+  L.push(`callers,${['flofreq','fivar','fgatk'].filter(id=>document.getElementById(id).checked)
+                   .map(id=>({flofreq:'LoFreq',fivar:'iVar',fgatk:'GATK4'})[id]).join(' ')||'none'}`);
   if(hidden.size) L.push(`hidden_products,${[...hidden].join(' ')}`);
   L.push(`note,thresholds above are the VIEW filters; the variant assessment uses fixed cut-offs`);
   return L;
@@ -5488,7 +5697,7 @@ function exportBuild(){
     V.ref[i]===255?'':AAS[V.ref[i]], V.alt[i]===255?'':AAS[V.alt[i]],
     V.nonsyn[i]?'YES':'NO', V.freq[i], V.depth[i],
     (altReads&&altReads[i]>=0)?altReads[i]:'', V.qual[i],
-    V.method[i]?'GATK4':'LoFreq',
+    CALLER[V.method[i]],
     V.afType?(['','fraction','genotype'][V.afType[i]]||''):'',
     assess?ASSESS_LABEL[assess[i]]:''
   ]);
