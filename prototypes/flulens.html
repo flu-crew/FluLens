@@ -837,7 +837,14 @@ let wfabc=null, wfabcAnimalCol=null, wfabcState='unknown';
                SUB-CONSENSUS variant can be recognised as one that would create
                a marker if it rose. That is the interesting direction: FluMut
                reads consensus, this table reads below it. */
-let fmSample=null, fmSite=null, fmState='unknown', fmDir='', fmCalib=null;
+/* fmMap — where FluMut's numbering lands on THIS reference, keyed `label|pos`.
+   Read from the pipeline's flumut_position_map.tsv, not inferred here. This app
+   used to solve a constant offset per label by searching for the shift that put
+   every marker's residue onto the translated reference, which could not work for
+   HA or NA: those have diverged by INDELS between subtypes, so no single offset
+   is right across the protein. The pipeline aligns FluMut's own reference
+   proteins to this run's and states the answer position by position. */
+let fmSample=null, fmSite=null, fmState='unknown', fmDir='', fmMap=null, fmMapState='unknown';
 /* The low-frequency screen, held separately from the consensus one on purpose —
    see readFluMut. Declared here with the rest of the state, not beside its
    loader, for the reason given at lsGet. */
@@ -1159,51 +1166,47 @@ function looksTimeSeries(){
 }
 
 /* ---- FluMut --------------------------------------------------------------- */
-/* FluMut protein label -> our product NAME. Positions are handled separately,
-   by calibration below — the names alone are not enough, because FluMut numbers
-   HA1 and HA2 from the start of each mature subunit while this table numbers
-   from codon 1 of the whole ORF. */
-function fmProduct(p){
-  if(/^HA/.test(p))   return 'HA';
-  if(/^NA/.test(p))   return 'NA';
-  if(p==='NS-1')      return 'NS1';
-  if(p==='NS-2')      return 'NEP';
-  return p;
-}
-/* Solve the numbering offset per FluMut label, from the data.
-   For each label, find the shifts that put EVERY marker's residue onto our
-   translated reference. Scoring accepts the marker's ref OR its alt, because
-   `X###Y` is stated against FluMut's own reference and ours frequently already
-   carries the alt — that is precisely why the reference itself produced 61
-   markers.
-   A label is only trusted when exactly ONE shift explains all of its markers.
-   With one or two markers many shifts fit by chance (HA2-5 has a single marker
-   and "fits" at 0, which is certainly wrong), and a confidently-wrong position
-   is worse than an absent one — so ambiguous labels are excluded from the
-   per-variant join and keep only their sample-level listing. */
-function calibrateFluMut(byLabel){
-  const off=new Map(), amb=[];
-  if(!refProt) return {off, amb:[...byLabel.keys()]};
-  for(const [label,ms] of byLabel){
-    const prod=fmProduct(label), P=refProt.get(prod);
-    if(!P||!ms.length){ amb.push(label); continue; }
-    const first=ms[0];
-    const cand=new Set();
-    for(let i=0;i<P.length;i++)
-      if(P[i]===first.ref||P[i]===first.alt) cand.add(i-first.pos+1);
-    const fits=[];
-    for(const k of cand){
-      let ok=true;
-      for(const m of ms){
-        const j=m.pos+k-1;
-        if(j<0||j>=P.length||!(P[j]===m.ref||P[j]===m.alt)){ ok=false; break; }
-      }
-      if(ok) fits.push(k);
-    }
-    if(fits.length===1) off.set(label,{product:prod,shift:fits[0],n:ms.length});
-    else amb.push(label);
+/* Read the pipeline's position map: FluMut's numbering -> this reference's.
+   `label|flumut_pos` -> {product, pos, refAA, fmAA}.
+
+   This replaces a per-label offset this app used to solve for itself. That
+   search needed several markers per label to pin a shift down, so small proteins
+   (M2, PB1-F2, NS-2) never resolved at all; and worse, a single offset is only
+   correct when the two proteins are colinear. HA and NA are not: they differ by
+   INDELS across subtypes, so on the swine H3N2 run the best shift for HA1
+   explained 8 of 14 markers — not a fit, and not a clean failure either.
+
+   The pipeline aligns FluMut's own reference proteins onto this run's, which
+   absorbs the indels and makes HA/NA work on any subtype rather than only H5N1.
+   Validated at 112 of 112 positions against FluMut's own placement across an
+   H3N2 and an H5N1 run.
+
+   A position absent from the file is one the alignment would not place, and it
+   stays absent here. That rule is unchanged and is the whole point: an absent
+   position is recoverable, a confidently wrong one is not. */
+async function readFluMutMap(){
+  fmMap=null; fmMapState='norun';
+  const f=findFile('variant_analysis/flumut/flumut_position_map.tsv',
+                   'flumut_position_map.tsv');
+  if(!f){ if(findAll(/flumut/).length) fmMapState='nofile'; return; }
+  const t=parseDelimited(await f.text());
+  if(!t){ fmMapState='nofile'; return; }
+  const i={lab:t.head.indexOf('label'), pos:t.head.indexOf('flumut_pos'),
+           fa:t.head.indexOf('flumut_aa'), prod:t.head.indexOf('product'),
+           rp:t.head.indexOf('ref_pos'),   ra:t.head.indexOf('ref_aa')};
+  if(i.lab<0||i.pos<0||i.prod<0||i.rp<0){ fmMapState='nofile'; return; }
+  fmMap=new Map();
+  for(const r of t.rows){
+    if(!r[i.lab]||!r[i.rp]) continue;
+    fmMap.set(`${r[i.lab]}|${+r[i.pos]}`,
+              {product:r[i.prod], pos:+r[i.rp],
+               refAA:i.ra>=0?r[i.ra]:'', fmAA:i.fa>=0?r[i.fa]:''});
   }
-  return {off, amb};
+  fmMapState = fmMap.size ? 'ok' : 'empty';
+}
+/* One marker component -> where it sits on this reference, or null. */
+function fmPlace(label, pos){
+  return fmMap ? (fmMap.get(`${label}|${pos}`) || null) : null;
 }
 const FM_RE=/^([A-Za-z0-9-]+):([A-Z])(\d+)([A-Z])$/;
 async function readFluMut(){
@@ -1250,21 +1253,19 @@ async function readFluMut(){
         effect:r.effect,lit:r.lit,subtype:r.subtype});
     }
   }
-  const {off,amb}=calibrateFluMut(byLabel);
-
   fmSite=new Map();
   for(const [label,ms] of byLabel){
-    const cal=off.get(label); if(!cal) continue;      // ambiguous: no position join
     for(const m of ms){
-      const pos=m.pos+cal.shift;
-      const key=`${cal.product}|${pos}|${m.alt}`;
+      // Not in the map means the alignment would not place it. Skip rather than
+      // guess — the marker still appears in the sample-level listing.
+      const hit=fmPlace(label,m.pos); if(!hit) continue;
+      const key=`${hit.product}|${hit.pos}|${m.alt}`;
       if(!fmSite.has(key)) fmSite.set(key,{marker:m.marker,ref:m.ref,alt:m.alt,
-        pos, fmPos:m.pos, label, shift:cal.shift, product:cal.product,
+        pos:hit.pos, fmPos:m.pos, label, product:hit.product,
         effects:new Set(), lit:m.lit, subtype:m.subtype});
       if(m.effect) fmSite.get(key).effects.add(m.effect);
     }
   }
-  fmCalib={off,amb};
 
   /* The low-frequency screen is a SECOND FluMut run and answers a different
      question. Plain FluMut screens the IRMA consensus: which markers has this
@@ -1987,11 +1988,12 @@ function codonNtFor(product, codonIdx){
    2026-08-09 run: 7,548 positions across 16 samples have ZERO coverage.
 
    Why this check lives HERE and not in the pipeline: FluMut numbers its markers
-   in its own scheme (HA1-5 is H5 HA1 numbering, NA-1 is N1), and calibrateFluMut
-   is the only thing that maps those back to our residue positions. Without that
-   mapping there is no way to ask which nucleotides a marker sits on. The
-   pipeline measured the exposure and published the depth; converting it to a
-   per-marker verdict needs the calibration, which only exists here.
+   in its own scheme (HA1-5 is H5 HA1 numbering, NA-1 is N1), so asking which
+   nucleotides a marker sits on needs those positions translated into ours. The
+   pipeline now states that translation in flumut_position_map.tsv, and the
+   pipeline also measured the exposure and published the depth — but joining the
+   two against a per-sample depth profile is a reader's question, asked of one
+   sample at a time and only for markers on screen, so it stays here.
 
    Read lazily and cached per sample, like the VCFs — 143 files of ~13k lines is
    not something to load at open for a panel most readers never scroll to. */
@@ -2064,13 +2066,13 @@ function markerCodonDepth(sample, product, residue){
    is only as supported as its least-covered component — the same rule
    markerOffSubtype applies to confirmability, for the same reason. */
 function markerSupport(sample, marker){
-  if(!fmCalib||!fmCalib.off) return null;
+  if(!fmMap) return null;
   let worst=null, unmapped=false;
   for(const tok of String(marker||'').split(',')){
     const g=FM_RE.exec(tok.trim()); if(!g){ unmapped=true; continue; }
-    const cal=fmCalib.off.get(g[1]);
-    if(!cal){ unmapped=true; continue; }   // label never calibrated — cannot ask
-    const d=markerCodonDepth(sample, cal.product, +g[3]+cal.shift);
+    const hit=fmPlace(g[1], +g[3]);
+    if(!hit){ unmapped=true; continue; }   // not placed by the map — cannot ask
+    const d=markerCodonDepth(sample, hit.product, hit.pos);
     if(d===null){ unmapped=true; continue; }
     if(worst===null||d<worst) worst=d;
   }
@@ -2145,6 +2147,10 @@ async function devBootstrap(root='run'){
                'variant_analysis/flumut/markers_all.tsv',
                // the pipeline's own subtype decision, read instead of re-deriving it
                'variant_analysis/flumut/subtype.tsv',
+               // where FluMut's numbering lands on this reference — without it no
+               // marker can be joined to a variant, so a dev or hosted run that
+               // omits it looks like a run with no markers at all
+               'variant_analysis/flumut/flumut_position_map.tsv',
                'variant_analysis/flumut_lowfreq/subtype.tsv',
                // the second FluMut run — markers present below consensus
                'variant_analysis/flumut_lowfreq/markers.tsv',
@@ -2305,6 +2311,9 @@ async function loadRun(){
         .filter(l=>l[0]==='>').map(l=>l.slice(1).split(/[ \t]/)[0]);
     }catch(e){}
     await phase('reading FluMut markers');
+    // Before readFluMut, which needs it: fmSite is built by looking every marker
+    // up in the map, so an unread map yields no per-variant join at all.
+    await readFluMutMap();
     const fm=await readFluMut();
     fmState=fm.state; fmDir=fm.dir||'';
     if(fm.state!=='ok'){ fmSample=null; fmSite=null; }
@@ -2344,6 +2353,12 @@ async function loadRun(){
       (gtf?`<span class="ok">✓</span> reference_gtf (${gtf.lens.size} products)\n`:`<span class="warn">·</span> no reference_gtf\n`)+
       (refProt?`<span class="ok">✓</span> reference.fa → ${refProt.size} proteins\n`:`<span class="warn">·</span> no reference row\n`)+
       (curF?`<span class="ok">✓</span> curated_amino_acids.txt (${nCur} sites)\n`:`<span class="warn">·</span> no curated sites\n`)+
+      /* Stated explicitly, because without it fmSite is EMPTY and every
+         per-variant marker verdict silently disappears — a blank panel that
+         looks like "no markers here" rather than "nothing could be placed". */
+      (fmMapState==='ok'
+        ? `<span class="ok">✓</span> flumut_position_map.tsv (${fmMap.size} positions)\n`
+        : `<span class="warn">·</span> no flumut_position_map.tsv — markers cannot be placed on variants\n`)+
       (fmState==='ok'
         ? `<span class="ok">✓</span> FluMut ${fmSite.size} marker sites\n   ${fmSample.size} samples with markers\n`+
           (fmLowState==='ok'
@@ -4976,11 +4991,13 @@ function subtypeNote(){
   if(ha!=='H5') bad.push('HA '+(ha||'unsuffixed'));
   if(na!=='N1') bad.push('NA '+(na||'unsuffixed'));
   if(!bad.length) return `   HA/NA numbering confirmed H5/N1\n`;
-  /* Count DISTINCT marker names across the SAMPLE results, not fmSite. A label
-     whose numbering could not be calibrated is excluded from the per-variant
-     join (fmCalib.amb) — on the swine run that is HA1-5 and NA-1 themselves, so
-     fmSite holds only PB2/PB1 and counting it would report zero affected while
-     ten sit in the per-sample lists. */
+  /* Count DISTINCT marker names across the SAMPLE results, not fmSite. fmSite
+     holds only what the position map could place, and a marker the map declined
+     still sits in the per-sample lists — counting fmSite would under-report.
+     This mattered more before the map (HA1-5 and NA-1 were absent wholesale, so
+     the count read zero while ten sat in the lists), but the rule stands: the
+     two indexes answer different questions and the sample lists are the
+     denominator this sentence is about. */
   const names=new Set();
   if(fmSample) for(const [,m] of fmSample) for(const [n] of m) names.add(n);
   if(fmSite) for(const [,v] of fmSite) names.add(v.marker);
