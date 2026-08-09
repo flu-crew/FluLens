@@ -198,6 +198,12 @@
   .unconf{font:9px ui-monospace,monospace;color:var(--warn);border:1px solid #6b5410;
     border-radius:4px;padding:0 3px;margin-left:4px;white-space:nowrap;
     background:rgba(250,178,25,.09)}
+  /* Same shape as .unconf, --bad rather than --warn. The two tags can appear on
+     one marker and have to be told apart at a glance: unconfirmed is "measured,
+     wrong ruler", no coverage is "never measured", and the second is worse. */
+  .nocov{font:9px ui-monospace,monospace;color:var(--bad);border:1px solid #7a3030;
+    border-radius:4px;padding:0 3px;margin-left:4px;white-space:nowrap;
+    background:rgba(224,108,108,.10)}
   /* The site listing is UNFILTERED in the nucleotides view, so it carries rows
      the variants view hides. Dimming them keeps that difference on screen: the
      reader clicked something painted and gets it, without the panel quietly
@@ -1954,7 +1960,14 @@ function drawDepth(bx,y,bw,H,rec,c0,c1,msg){
 
 function codonNt(prodIdx, codonIdx){
   const p=products[prodIdx]; if(!p) return [];
-  const rec=gtfCDS&&gtfCDS.get(p.product); if(!rec) return [];
+  return codonNtFor(p.product, codonIdx);
+}
+/* By product NAME, because the marker coverage check below has a name and not
+   an index. Same exon walk — splicing is the whole reason this cannot be
+   codonIdx*3: M2, NEP and PA-X carry codons across a junction, so the three
+   nucleotides of one residue are not contiguous in the reference. */
+function codonNtFor(product, codonIdx){
+  const rec=gtfCDS&&gtfCDS.get(product); if(!rec) return [];
   const want=[codonIdx*3, codonIdx*3+1, codonIdx*3+2], out=[];
   let seen=0;
   for(const [s,e] of rec.exons){
@@ -1964,6 +1977,104 @@ function codonNt(prodIdx, codonIdx){
     if(out.length===3) break;
   }
   return out;
+}
+
+/* ---- per-position depth, for "does this marker rest on any reads?" ---------
+
+   Flumina's DEPTH_PROFILE publishes depth_profiles/<sample>.depth —
+   `samtools depth -a` on the reference-aligned BAM, so it is already in the
+   reference coordinates FluMut's markers land in once calibrated. On the
+   2026-08-09 run: 7,548 positions across 16 samples have ZERO coverage.
+
+   Why this check lives HERE and not in the pipeline: FluMut numbers its markers
+   in its own scheme (HA1-5 is H5 HA1 numbering, NA-1 is N1), and calibrateFluMut
+   is the only thing that maps those back to our residue positions. Without that
+   mapping there is no way to ask which nucleotides a marker sits on. The
+   pipeline measured the exposure and published the depth; converting it to a
+   per-marker verdict needs the calibration, which only exists here.
+
+   Read lazily and cached per sample, like the VCFs — 143 files of ~13k lines is
+   not something to load at open for a panel most readers never scroll to. */
+let depthCache=new Map();     // sample -> Map(segment -> Int32Array by 1-based pos) | null
+function findDepthFile(sample){
+  const leaf=`/${sample}.depth`;
+  const exact='depth_profiles'+leaf;
+  if(files.has(exact)) return files.get(exact);
+  for(const [p,f] of files) if(p.endsWith(leaf)) return f;
+  return null;
+}
+async function loadDepth(sample){
+  if(depthCache.has(sample)) return depthCache.get(sample);
+  const f=findDepthFile(sample);
+  if(!f){ depthCache.set(sample,null); return null; }
+  const bySeg=new Map();
+  try{
+    /* Two passes: size each segment, then fill. An Int32Array per segment beats
+       a Map of 13k string keys on both memory and lookup, and the depth track
+       already proved that shape is what the draw loop can afford. */
+    const text=await f.text();
+    const lines=text.split(/\r?\n/);
+    const max=new Map();
+    for(const ln of lines){
+      if(!ln) continue;
+      const t=ln.split('\t'); if(t.length<3) continue;
+      const s=shortLocus(t[0]), p=+t[1];
+      if(!(p>0)) continue;
+      if(!max.has(s)||p>max.get(s)) max.set(s,p);
+    }
+    for(const [s,n] of max) bySeg.set(s,new Int32Array(n+1).fill(-1));
+    for(const ln of lines){
+      if(!ln) continue;
+      const t=ln.split('\t'); if(t.length<3) continue;
+      const s=shortLocus(t[0]), p=+t[1], d=+t[2];
+      const arr=bySeg.get(s); if(arr&&p>0&&p<arr.length) arr[p]=d;
+    }
+  }catch(e){ depthCache.set(sample,null); return null; }
+  depthCache.set(sample,bySeg);
+  return bySeg;
+}
+/* Synchronous read of whatever loadDepth has already cached — the panel loads it
+   before composing, exactly as it does for the LoFreq VCF and the iVar TSV.
+
+   Returns the MINIMUM depth across the codon's three nucleotides, or null when
+   the answer is not known. Minimum, not mean: a residue read from three bases
+   is only as supported as its worst-covered one, and averaging would let two
+   deep bases hide a third with nothing under it.
+
+   -1 in the array is "the depth file did not mention this position", which is
+   different from a depth of 0 and is returned as null rather than as zero. */
+function markerCodonDepth(sample, product, residue){
+  const bySeg=depthCache.get(sample);
+  if(!bySeg||!(residue>0)) return null;
+  const nts=codonNtFor(product, residue-1);
+  if(nts.length!==3) return null;
+  const rec=gtfCDS&&gtfCDS.get(product); if(!rec) return null;
+  const arr=bySeg.get(shortLocus(rec.seqname||'')) || bySeg.get(shortLocus(product));
+  if(!arr) return null;
+  let lo=Infinity;
+  for(const p of nts){
+    if(p<1||p>=arr.length) return null;
+    const d=arr[p]; if(d<0) return null;
+    if(d<lo) lo=d;
+  }
+  return lo===Infinity?null:lo;
+}
+/* Every marker token resolved to a codon depth. A compound marker
+   ("HA1-5:G224S,PB2:E627K") is ONE marker made of several substitutions, so it
+   is only as supported as its least-covered component — the same rule
+   markerOffSubtype applies to confirmability, for the same reason. */
+function markerSupport(sample, marker){
+  if(!fmCalib||!fmCalib.off) return null;
+  let worst=null, unmapped=false;
+  for(const tok of String(marker||'').split(',')){
+    const g=FM_RE.exec(tok.trim()); if(!g){ unmapped=true; continue; }
+    const cal=fmCalib.off.get(g[1]);
+    if(!cal){ unmapped=true; continue; }   // label never calibrated — cannot ask
+    const d=markerCodonDepth(sample, cal.product, +g[3]+cal.shift);
+    if(d===null){ unmapped=true; continue; }
+    if(worst===null||d<worst) worst=d;
+  }
+  return {depth:worst, unmapped};
 }
 
 /* ---- dev bootstrap ---------------------------------------------------------
@@ -2046,6 +2157,12 @@ async function devBootstrap(root='run'){
   if(!m.has('variant_analysis/all_sample_amino_acids.txt')) return false;
   for(const g of await listDir('reference_gtf'))
     if(g.endsWith('.gtf')) m.set('reference_gtf/'+g, shim(`${root}/reference_gtf/${g}`));
+  /* Per-sample depth from DEPTH_PROFILE. Listed rather than probed by name
+     because the sample names are not known until the table is parsed, and this
+     runs before that. Absent on any run older than 2026-08-08, which is why
+     every read of it is guarded. */
+  for(const d of await listDir('depth_profiles'))
+    if(d.endsWith('.depth')) m.set('depth_profiles/'+d, shim(`${root}/depth_profiles/${d}`));
   // WFABC results live in one or more wfabc* directories
   for(const d of (await listDir('')).map(x=>x.replace(/\/$/,''))
                                     .filter(x=>/^wfabc/.test(x))){
@@ -2291,6 +2408,7 @@ async function loadRun(){
     renderMetaPicker();
     // gatkCache too, or a second run shows the first run's FILTER values
     hidden=new Set(); vcfCache=new Map(); gatkCache=new Map(); ivarCache=new Map();
+    depthCache=new Map();       // or a second run reports the first run's coverage
     selVariant=null; selCol=null; selNt=null;
     assess=null; altReads=null; assessStats=null; assessReady=false; assessBusy=null;
     await phase('laying out');
@@ -4939,6 +5057,11 @@ function flumutSection(i){
        carries 10 HA1-5 and 9 NA-1 against 50 internal-gene markers. Tagging them
        is not enough on its own if the tagging pushes the trustworthy ones out of
        sight, so the ordering has to agree with the labelling. */
+    /* No coverage tag here, deliberately. This list is the PLAIN FluMut screen,
+       which reads the IRMA consensus — built from the sample's own reads, so a
+       position with none simply is not in it. The reference-base-stands-in
+       problem belongs to the low-frequency screen alone, and tagging both would
+       invent a doubt about the one screen that does not have it. */
     const ent=[...mine.entries()]
       .map(([m,d])=>({m,d,off:markerOffSubtype(m)}))
       .sort((a,b)=>a.off-b.off);
@@ -4970,18 +5093,38 @@ function flumutSection(i){
     const already=mine||new Map();
     const extra=low ? [...low.entries()].filter(([m])=>!already.has(m)) : [];
     if(extra.length){
-      const ord=extra.map(([m,d])=>({m,d,off:markerOffSubtype(m)}))
-                     .sort((a,b)=>a.off-b.off);
+      /* THIS is the screen the coverage check belongs to. It paints LoFreq
+         calls onto the reference, so where the sample has no reads the
+         REFERENCE base stands in and FluMut screens it as though it had been
+         observed. On the 2026-08-09 run that is 7,548 positions across 16
+         samples. A marker there is not a finding — it is the reference talking.
+
+         Sorted ahead of the off-subtype tag: "never measured" is a stronger
+         objection than "measured against the wrong ruler". */
+      const sname=names[V.row[i]];
+      const ord=extra.map(([m,d])=>{ const s=markerSupport(sname,m);
+                   return {m,d,off:markerOffSubtype(m), nocov:!!(s&&s.depth===0)}; })
+                     .sort((a,b)=>(b.nocov-a.nocov)||(a.off-b.off));
+      const nNo=ord.filter(e=>e.nocov).length;
       const list=ord.slice(0,6).map(e=>
         `<b>${esc(e.m)}</b> ${esc([...e.d.effects][0]||'')}`+
-        (e.off?`<span class="unconf">unconfirmed</span>`:'')).join('<br>');
+        (e.off?`<span class="unconf">unconfirmed</span>`:'')+
+        (e.nocov?`<span class="nocov">no coverage</span>`:'')).join('<br>');
       html+=`<div class="note" style="margin-top:8px">`+
         `<span class="warn">+${extra.length}</span> more below consensus, from the `+
         `low-frequency screen:<br>${list}`+
         (extra.length>6?`<br>…and ${extra.length-6} more`:'')+
         `<br><br>These come from LoFreq calls painted onto the reference, so they are `+
         `present in the reads but NOT in this sample's consensus — a marker in the `+
-        `population rather than one the sample carries.</div>`;
+        `population rather than one the sample carries.`+
+        /* Its own sentence rather than folded into the paragraph above: that one
+           explains what the list IS, this one says which entries cannot be
+           trusted, and a reader has to be able to act on them separately. */
+        (nNo?`<br><br><span class="bad">${nNo} of these ${nNo>1?'sit':'sits'} on positions `+
+             `with NO reads in this sample.</span> The reference base stood in for data that `+
+             `is not there, so ${nNo>1?'those markers are':'that marker is'} the reference `+
+             `talking rather than the sample. Absence of a marker at such a position is not `+
+             `evidence of absence either.`:'')+`</div>`;
     }
   } else if(fmLowState==='nofile'){
     html+=`<div class="note" style="margin-top:8px">a flumut_lowfreq directory exists but `+
@@ -5208,6 +5351,11 @@ async function renderVariant(el,i){
   // the assessment reporting absence of evidence as evidence of absence.
   if(V.method[i]===M_IVAR) await loadIvar(names[V.row[i]]);
   if(V.method[i]===M_GATK) await loadGATK(names[V.row[i]]);
+  /* Awaited for the same reason the others are: markerSupport() reads the cache
+     synchronously while the marker list is composed, and an unawaited load would
+     report every marker as unmeasured on the first click and supported on the
+     second. */
+  await loadDepth(names[V.row[i]]);
   const p=PROD.get(V.prod[i]);
   const refAA=V.ref[i]===255?'?':AAS[V.ref[i]], altAA=V.alt[i]===255?'?':AAS[V.alt[i]];
   const cur=curated.get(V.col[i]);
