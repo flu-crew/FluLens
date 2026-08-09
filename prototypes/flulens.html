@@ -466,7 +466,7 @@ the changed base's colour.</div>
     </div>
 
     <!-- 6 · filters -->
-    <div class="sec">
+    <div class="sec" id="filtersec">
       <h4>Filters</h4>
       <div class="fld"><label><input type="checkbox" id="fnonsyn" checked> nonsynonymous only</label></div>
       <div class="fld"><span>min depth</span>
@@ -499,6 +499,13 @@ the changed base's colour.</div>
         <label><input type="checkbox" id="fivar" checked> iVar</label>
         <label><input type="checkbox" id="fgatk" checked> GATK4</label></div>
       <div class="note" id="filternote"> </div>
+      <!-- Shown only in the consensus view, where these controls do not apply.
+           A consensus is established by definition — letting a depth or
+           frequency cut change it would invite reading a filter artefact as a
+           consensus. The controls grey rather than vanish, per the rule at
+           placeModeSwitch. -->
+      <div class="note" id="consfilternote" hidden>Not applied in the consensus
+        view — a consensus is established, not filtered.</div>
     </div>
 
     <!-- 7 · samples. Sliders first, then the checkboxes that act on them. -->
@@ -3320,12 +3327,17 @@ function drawConsensus(bx,by,bw,bh,c0,c1,r0,r1,rh,expH,expPos){
   // differences
   const mark=Math.max(cw<1?3:1,cw), mh=Math.max(cw<1?2:1,rh);
   ctx.fillStyle=TH.consDiff;
+  /* consSource(), not consAlt: this view is amino acids, so a silent change is
+     not a change and must not be painted. The residue is read from the winning
+     call rather than consAlt for the same reason — consAlt holds the overall
+     winner, which may be the silent one. */
+  const SRC=consSource();
   const rects=new Path2D(); let n=0;
   for(let r=r0;r<r1;r++){
     const sm=rowOrder[r]; if(sm===undefined) continue;
     const base=sm*NC, y=__yOf(r);
     for(let c=c0;c<c1;c++){
-      if(consAlt[base+c]===255) continue;
+      if(SRC[base+c]<0) continue;
       rects.rect(bx+(c-scrollCol)*cw, y, mark, mh); n++;
     }
   }
@@ -3337,7 +3349,8 @@ function drawConsensus(bx,by,bw,bh,c0,c1,r0,r1,rh,expH,expPos){
       const sm=rowOrder[r]; if(sm===undefined) continue;
       const base=sm*NC, y=__yOf(r);
       for(let c=c0;c<c1;c++){
-        const a=consAlt[base+c]; if(a===255) continue;
+        const vi=SRC[base+c]; if(vi<0) continue;
+        const a=V.alt[vi]; if(a===255) continue;
         ctx.drawImage(atlas,a*atlasGW,(gb+1)*atlasGH,atlasGW,atlasGH,
           bx+(c-scrollCol)*cw, y, cw, rh);
       }
@@ -3718,22 +3731,40 @@ let consAlt=null;              // NT*NC — AA index of the consensus residue,
    the residue rather than re-deriving it from the reference and hoping the same
    one wins twice. */
 let consVar=null;              // NT*NC — index into V, or -1
+/* The same grid restricted to calls that actually CHANGE THE RESIDUE.
+   A silent change is a real consensus change and belongs in the nucleotides
+   view, where the base genuinely differs. In an amino-acid view it is not a
+   change at all — the cell reads `G356G`, glycine to glycine — so it has no
+   business being painted there. That is definitional, not a filter: it holds
+   whether or not "nonsynonymous only" is ticked, and the call filters do not
+   apply to a consensus at all (see applyFilters).
+   Kept as a SECOND winner rather than by testing V.nonsyn on consVar, because
+   one codon can carry both a silent and a replacement call above 50% and the
+   silent one can be the more frequent. Testing the single winner would let a
+   silent call outrank a real residue change and hide it. */
+let consVarAA=null;            // NT*NC — best NONSYNONYMOUS call, or -1
 let consN=0;
 function buildConsensus(){
   consAlt=new Uint8Array(NT*NC).fill(255); consN=0;
   consVar=new Int32Array(NT*NC).fill(-1);
-  const best=new Float32Array(NT*NC);
+  consVarAA=new Int32Array(NT*NC).fill(-1);
+  const best=new Float32Array(NT*NC), bestAA=new Float32Array(NT*NC);
   for(let i=0;i<V.n;i++){
     // A GATK4-only hom-alt call says "this genotype", not "this fraction", so
     // it cannot be read as "above 50%". Excluded rather than guessed at.
     if(isGenotypeAF(i)) continue;
     if(V.freq[i]<=0.5||V.alt[i]===255) continue;
     const k=V.row[i]*NC+V.col[i];
-    if(V.freq[i]<=best[k]) continue;         // several fixed calls in one codon
-    if(consAlt[k]===255) consN++;
-    best[k]=V.freq[i]; consAlt[k]=V.alt[i]; consVar[k]=i;
+    if(V.freq[i]>best[k]){                   // several fixed calls in one codon
+      if(consAlt[k]===255) consN++;
+      best[k]=V.freq[i]; consAlt[k]=V.alt[i]; consVar[k]=i;
+    }
+    if(V.nonsyn[i]&&V.freq[i]>bestAA[k]){ bestAA[k]=V.freq[i]; consVarAA[k]=i; }
   }
 }
+/* Which consensus grid a view reads. The alphabet decides: nucleotides shows
+   every base that changed, amino acids only residues that changed. */
+const consSource = () => viewer==='nucleotides' ? consVar : consVarAA;
 
 /* ---- read pileup for one expanded sample --------------------------------
    Only rendered when the columns are wide enough to mean anything (a codon
@@ -4526,7 +4557,11 @@ function draw(){
     ctx.globalAlpha=1;
   }
   }
-  if(selVariant!==null&&viewMode!=='consensus'){
+  /* The consensus view is included now. It was excluded while a click there
+     could not select anything — cellAt hit-tested the filtered grid, so a ring
+     had nothing to draw around. Now that it hit-tests what was painted, a
+     selection without a ring would look like the click had missed. */
+  if(selVariant!==null){
     const c=V.col[selVariant], r=rowPos[V.row[selVariant]];
     if(r>=0&&c>=c0&&c<c1&&r>=r0&&r<r1){
       ctx.strokeStyle=TH.selRing; ctx.lineWidth=1.5;
@@ -5793,10 +5828,44 @@ function cellAt(cx,cy){
   if(!ready||!cls||cx<NAMES_W||cy<topH()) return null;
   const rh=rowH(), P=1;
   const colAt=x=>Math.floor(scrollCol+(x-NAMES_W)/cw);
-  const rowAt=y=>Math.floor(scrollRow+(y-topH())/rh);
+  /* Rows go through displayRowAt, NOT flat `scrollRow+(y-topH())/rh`.
+     An expanded sample pushes every row below it down by pileHeight(), and the
+     flat form knows nothing about that: with a 204 px band over 5.65 px rows it
+     returned a row 36 too low, so a click below the expansion selected an
+     unrelated sample — or nothing at all, when that sample had no call in the
+     column, which is what it looked like from the outside. A click INSIDE the
+     band is not a cell and must say so rather than resolve to whatever row the
+     arithmetic lands on.
+     ntCellAt has always done this; cellAt was simply never brought along. */
+  const rc=displayRowAt(cy);
+  if(rc<0) return null;
+  let ra=displayRowAt(cy-P);   if(ra<0) ra=rc;
+  let rb=displayRowAt(cy+P+1); if(rb<0) rb=rc;
   const c0=Math.max(0,colAt(cx-P)), c1=Math.min(NC-1,colAt(cx+P+1));
-  const r0=Math.max(0,rowAt(cy-P)), r1=Math.min(NTvis-1,rowAt(cy+P+1));
+  const r0=Math.max(0,Math.min(ra,rb)), r1=Math.min(NTvis-1,Math.max(ra,rb));
   if(c1<c0||r1<r0) return null;
+  /* The consensus view paints from consVar, which buildConsensus fills from
+     EVERY call regardless of the filters — so hit-testing `cls` here asks a
+     different question from the one the reader clicked. Measured on the swine
+     run at the default nonsynonymous-only setting: 65 consensus cells painted,
+     32 clickable. Every synonymous change was inert, and showing synonymous
+     consensus changes is most of what this view is FOR.
+
+     Exactly the split ntCellAt exists to fix, in the other viewer. Match what
+     was painted, per the rule in renderSite. */
+  if(viewMode==='consensus'&&consSource()){
+    const SRC=consSource();                            // the grid drawConsensus painted
+    const ce=colAt(cx), sme=rowOrder[rc];
+    if(sme!==undefined&&ce>=0&&ce<NC){                 // the exact cell wins
+      const vi=SRC[sme*NC+ce]; if(vi>=0) return {i:vi};
+    }
+    for(let dr=r0;dr<=r1;dr++){                        // then the 1 px tolerance
+      const sm=rowOrder[dr]; if(sm===undefined) continue;
+      const base=sm*NC;
+      for(let c=c0;c<=c1;c++){ const vi=SRC[base+c]; if(vi>=0) return {i:vi}; }
+    }
+    return null;
+  }
   let best=-1,bb=0;
   for(let dr=r0;dr<=r1;dr++){
     const sm=rowOrder[dr]; if(sm===undefined) continue;
@@ -6090,6 +6159,24 @@ function placeModeSwitch(){
         el.style.display = ownLegend?'none':''; });
   }
   for(const b of [...l.children,...r.children]) b.classList.toggle('on',b.dataset.v===viewer);
+  /* The call filters do not apply to the consensus view and never did —
+     buildConsensus reads every call above 50% regardless of them. Leaving the
+     controls live made them look ignored, which is how this surfaced: a reader
+     ticked "nonsynonymous only" and silent changes stayed on screen.
+     They grey rather than vanish, same rule as the variant-view switch below.
+     Sample-level controls are NOT touched: hiding a sample is about which rows
+     to show and is meaningful in every view. */
+  {
+    const fs=document.getElementById('filtersec'), fn=document.getElementById('filternote'),
+          cn=document.getElementById('consfilternote');
+    if(fs){
+      const off = viewMode==='consensus';
+      fs.querySelectorAll('input,select').forEach(el=>{ el.disabled=off; });
+      fs.style.opacity = off ? .5 : '';
+      if(fn) fn.hidden = off;      // its count describes the filtered grid, not this one
+      if(cn) cn.hidden = !off;
+    }
+  }
   /* The variant-view switch stays VISIBLE in selection and goes disabled
      instead. A control that disappears reads as a bug; one that is greyed says
      "not applicable here", which is the true statement. Same for the
@@ -6192,12 +6279,17 @@ function exportBuild(){
     return {cols, rows};
   }
   if(viewMode==='consensus'){
-    if(!consAlt) return null;
+    // Same grid the view paints, or the export carries rows the reader cannot
+    // see — and for a silent change reference_aa and sample_aa are the same
+    // letter, which is not an amino-acid result at all.
+    const SRC=consSource();
+    if(!SRC) return null;
     const cols=['sample','product','codon','reference_aa','sample_aa'];
     const rows=[];
     for(const sm of rowOrder){
       for(let c=0;c<NC;c++){
-        const a=consAlt[sm*NC+c]; if(a===255) continue;
+        const vi=SRC[sm*NC+c]; if(vi<0) continue;
+        const a=V.alt[vi]; if(a===255) continue;
         const pi=colProd[c]; if(pi<0) continue;
         const pr=products[pi]; if(hidden.has(pr.product)) continue;
         rows.push([names[sm], pr.product, c-pr.off+1, refAt(c)||'', AAS[a]]);
