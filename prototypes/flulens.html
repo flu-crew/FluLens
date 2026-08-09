@@ -130,6 +130,11 @@
   .legend .lticks{display:flex;justify-content:space-between;
     font:9px ui-monospace,monospace;color:var(--dim);margin-top:3px}
   .note{font:10px/1.55 ui-monospace,monospace;color:var(--dim);white-space:pre-line}
+  /* `class="dim"` was in use at two places in the panel with no rule behind it,
+     so text meant to read as secondary ("no DP4 in the LoFreq VCF for this
+     position") rendered at full weight — indistinguishable from a finding.
+     The variable --dim existed; the class never did. */
+  .dim{color:var(--dim)}
   .warn{color:var(--warn)}
   .bad{color:var(--bad)}
   .ok{color:#7fc79b}
@@ -259,6 +264,9 @@
      control rather than a status readout; the small copy over the matrix keeps
      its original size, since there it sits among the column headers. */
   .modepick{display:flex;flex-direction:column;align-items:center;gap:3px;flex:none}
+  /* Set apart from the viewer selector rather than butted against it: they are
+     two different questions, and a single run of buttons reads as one control. */
+  #vvpick{margin-left:18px}
   .modepick-label{font:9px system-ui;letter-spacing:.9px;text-transform:uppercase;
     color:var(--dim)}
   .modesw.big button{font-size:11px;padding:3px 12px;line-height:1.5}
@@ -309,12 +317,21 @@
   <!-- The mode is the single most consequential control in the app — it decides
        what every cell MEANS — and it spent its life as 9px text tucked beside
        the zoom buttons. Centred, labelled, and given real hit targets. -->
+  <!-- Two orthogonal questions, two controls. WHICH ALPHABET a cell is written
+       in (amino acids / nucleotides / selection) is independent of WHICH CALLS
+       it shows (low-frequency or consensus), and the old single row of four
+       conflated them: `variants` and `consensus` were both amino acids, while
+       `nucleotides` was silently consensus-only with nothing saying so. -->
   <div class="modepick">
     <span class="modepick-label">viewer selector</span>
-    <div id="modeR" class="modesw big" title="What each cell shows: variant calls, the sample's consensus residue, the nucleotide behind it, or per-codon selection"><button data-m="variants">variants</button
-      ><button data-m="consensus">consensus</button
-      ><button data-m="nucleotides">nucleotides</button
-      ><button data-m="selection">selection</button></div>
+    <div id="modeR" class="modesw big" title="What each cell is written in: amino acids, the nucleotides behind them, or per-codon selection"><button data-v="aminoacids">amino acids</button
+      ><button data-v="nucleotides">nucleotides</button
+      ><button data-v="selection">selection</button></div>
+  </div>
+  <div class="modepick" id="vvpick">
+    <span class="modepick-label">variant view</span>
+    <div id="vvR" class="modesw big" title="Which calls are shown: every call above the filters, or only what reached the sample's consensus"><button data-vv="lowfreq">low frequency</button
+      ><button data-vv="consensus">consensus</button></div>
   </div>
   <div class="hgroup right"><div class="stat" id="stats">—</div></div>
   <div class="tools">
@@ -372,7 +389,23 @@ kind was observed, not which exceeds the other. On this run <span id="selboth"><
 have both terms non-zero — those are the only cells where the comparison is a
 comparison. The pattern across many codons is the signal; one cell is not.</div>
       </div>
-      <div class="fld" style="margin-top:8px"><span>letters</span>
+      <!-- Shown only in the nucleotides view. The residue schemes (Zappo,
+           ClustalX, Taylor, …) encode amino-acid PROPERTIES — charge, polarity,
+           hydrophobicity — so none of them transfers to four bases; there is no
+           sensible mapping to inherit. The bases get their own fixed key
+           instead, drawn from NT_COL so the legend cannot drift from the cells. -->
+      <div id="ntlegend" hidden style="margin-top:10px">
+        <h4>Bases</h4>
+        <div class="lramp" id="ntramp" style="height:14px">
+          <div></div><div></div><div></div><div></div>
+        </div>
+        <div class="lticks"><span>A</span><span>C</span><span>G</span><span>T</span></div>
+        <div class="note" style="margin-top:6px">Only the base that DIFFERS from the
+reference is painted, in its own colour, within the third of the codon it occupies.
+Below 3&thinsp;px per codon the thirds cannot be separated, so the whole codon takes
+the changed base's colour.</div>
+      </div>
+      <div class="fld" id="aaschemefld" style="margin-top:8px"><span>letters</span>
         <select id="aascheme" style="flex:1;min-width:0">
           <!-- `selected` must track the aaScheme default below. The restore
                code only assigns .value when localStorage HAS a value, so with
@@ -508,10 +541,15 @@ click the ✓/✕ to override by hand</div>
     <button id="dtoggle" title="Hide / show the detail panel">›</button>
     <!-- Same control in two places: over the names header, and at the right of
          the reference row. Whichever one the eye is near is the one to hit. -->
-    <div id="modeL" class="modesw"><button data-m="variants">variants</button
-      ><button data-m="consensus">consensus</button
-      ><button data-m="nucleotides">nucleotides</button
-      ><button data-m="selection">selection</button></div>
+    <!-- Viewer only. The variant-view switch is NOT duplicated here: this copy
+         is absolutely positioned over the names-pane header, which is NAMES_W
+         wide (180px by default) and this control already measures 179. A second
+         switch beside it overflows into the matrix, and stacked beneath it
+         covers the reference row. The full pair lives at the right, where there
+         is room for it. -->
+    <div id="modeL" class="modesw"><button data-v="aminoacids">amino acids</button
+      ><button data-v="nucleotides">nucleotides</button
+      ><button data-v="selection">selection</button></div>
 
   </div>
 
@@ -823,7 +861,22 @@ let metaCols=[], meta=new Map(), metaShow=[];
    than written into the DOM once, because renderMetaPicker() runs again on
    every run load and would otherwise wipe a note inserted after it. */
 let metaSource=null;
-const META_COL_W=66;
+const META_COL_W=66;          // default width; each column can be dragged wider
+const META_COL_MIN=28;        // narrow enough to park a column, wide enough to grab
+
+/* Per-column metadata widths, keyed by column name — 66px suits "Day" and
+   truncates "Vaccine_group", and which columns a run shows is the user's choice,
+   so one constant could never fit them all.
+
+   Declared HERE, in the early block beside metaShow, and not down by the drawing
+   code that uses it. That is the documented rule in this file and it has bitten
+   twice: a persisted preference declared below its localStorage restore puts the
+   restore in the temporal dead zone, and the throw is swallowed by the
+   surrounding try/catch — silently, in freqLog's case.
+
+   Absent means "take the default", never "the user chose 66". */
+let metaColW=new Map();
+function mcw(c){ const w=metaColW.get(c); return (w>0)?w:META_COL_W; }
 
 /* ---- reading the run directory -------------------------------------------- */
 /* Nextflow's work directory usually sits INSIDE the run directory, and it holds
@@ -1150,6 +1203,17 @@ const FM_RE=/^([A-Za-z0-9-]+):([A-Z])(\d+)([A-Z])$/;
 async function readFluMut(){
   const f   = findFile('variant_analysis/flumut/markers.tsv');
   const all = findFile('variant_analysis/flumut/markers_all.tsv') || f;
+  /* Read BEFORE the markers.tsv guard below, and from either screen: the
+     subtype is a property of the run, and the pipeline writes the same answer
+     into both flumut/ and flumut_lowfreq/. A run whose consensus screen found
+     nothing still has a subtype worth reporting. */
+  /* Cleared here, not in the load routine's reset block, so it cannot be
+     forgotten: a second run without subtype.tsv would otherwise inherit the
+     first run's answer — the same trap the gatkCache reset exists for. */
+  pipeSubtype = null;
+  const sf = findFile('variant_analysis/flumut/subtype.tsv',
+                      'variant_analysis/flumut_lowfreq/subtype.tsv');
+  if(sf){ try{ pipeSubtype = parseSubtypeFile(await sf.text()); }catch(e){ pipeSubtype=null; } }
   if(!f) return {state: findAll(/flumut/).length?'nofile':'norun'};
   const parse=async(file)=>{
     const t=parseDelimited(await file.text());
@@ -1284,7 +1348,13 @@ function parseAA(text, gtfLens){
     /* iVar's own PASS verdict and the LoFreq-vs-iVar fraction gap, both added
        by convertVCFtoTable.R in 2026-08. Absent in older tables, which is why
        every read of them is guarded rather than assumed. */
-    ivarPass:ix('ivar_pass'), afConf:ix('af_conflict')};
+    ivarPass:ix('ivar_pass'), afConf:ix('af_conflict'),
+    /* GATK4's FILTER, carried by convertVCFtoTable.R as of 2026-08-07 for the
+       same reason ivar_pass is: VariantFiltration annotates rather than removes.
+       This app already reads it from gatk4-filtered-snps.vcf per sample; the
+       column is the fallback for a run opened without its VCFs, which is the
+       common case for a results tree that has been moved or trimmed. */
+    gatkFilter:ix('gatk_filter')};
   if(C.sample<0||C.locus<0||C.aapos<0||C.freq<0)
     throw new Error('not an all_sample_amino_acids.txt');
 
@@ -1299,7 +1369,7 @@ function parseAA(text, gtfLens){
        is assumed to have come from the METADATA csv, so a new pipeline column
        silently becomes a sortable per-sample field holding the first row's
        value — wrong, and wrong in a way that looks like a working feature. */
-    'variant_id','af_type','allele_fraction','ivar_pass','af_conflict']);
+    'variant_id','af_type','allele_fraction','ivar_pass','af_conflict','gatk_filter']);
   metaCols=head.filter(h=>h&&!KNOWN.has(h));
   // Reset per run: these columns arrived with the table, not from a file the
   // user chose, and carrying a previous run's filename over would be a lie.
@@ -1352,7 +1422,7 @@ function parseAA(text, gtfLens){
   const sampleIx=new Map(); names=[];
   const A={row:[],col:[],freq:[],depth:[],qual:[],alt:[],ref:[],nonsyn:[],
            method:[],pos:[],aapos:[],prod:[],refnt:[],altnt:[],refcod:[],altcod:[],seg:[],
-           afType:[],afrac:[],ivarPass:[],afConf:[]};
+           afType:[],afrac:[],ivarPass:[],afConf:[],gatkFilter:[]};
   /* `+''` is 0, not NaN. A missing allele_fraction parsed with a bare `+` would
      become a 0% call that passes the min-freq filter and paints as absent, so
      blank and R's "NA" both have to be turned into NaN explicitly. */
@@ -1384,6 +1454,11 @@ function parseAA(text, gtfLens){
     A.afrac.push(C.afrac>=0?afNum(f[C.afrac]):NaN);
     A.ivarPass.push(C.ivarPass>=0?f[C.ivarPass]:'');
     A.afConf.push(C.afConf>=0?afNum(f[C.afConf]):NaN);
+    /* R writes the absent case as the literal string "NA", and here that is a
+       value the column can never legitimately hold — FILTER is PASS, ".", or a
+       semicolon list of failed tests. Normalising it to '' at read keeps the
+       "no verdict" case one thing rather than two. */
+    A.gatkFilter.push(C.gatkFilter>=0?(f[C.gatkFilter]==='NA'?'':f[C.gatkFilter]):'');
   }
   const n=A.row.length;
   V={n, row:Int32Array.from(A.row), col:Int32Array.from(A.col),
@@ -1395,6 +1470,7 @@ function parseAA(text, gtfLens){
      refcod:A.refcod, altcod:A.altcod,
      afType:Uint8Array.from(A.afType), afrac:Float32Array.from(A.afrac),
      ivarPass:A.ivarPass, afConf:Float32Array.from(A.afConf),
+     gatkFilter:A.gatkFilter,
      /* Both columns, not either. af_type alone would mark every GATK4 row a
         genotype with no fraction to borrow, losing exactly the reconciliation
         the columns exist to provide — worse than not reading them at all. */
@@ -1506,12 +1582,22 @@ async function loadGATK(sample){
   gatkCache.set(sample,map);
   return map;
 }
-// Synchronous read of whatever loadGATK has already cached — assessDetail runs
-// inline while the panel HTML is built, so the caller loads it first.
+/* Synchronous read of whatever loadGATK has already cached — assessDetail runs
+   inline while the panel HTML is built, so the caller loads it first.
+
+   The VCF wins over the pipeline column when both are present, deliberately and
+   for the same reason iVar rows read their own TSV rather than the table: the
+   file is the primary record, and a table can have been written by an older
+   pipeline than the VCFs beside it. The column is what makes the verdict
+   survive a run opened without its vcf_files/. Returns null for "no verdict
+   available", which the callers already distinguish from a FILTER of "." — that
+   is GATK4 saying it applied no filter, which is a claim, not an absence. */
 function gatkFilterOf(i){
   const m=gatkCache.get(names[V.row[i]]);
   const r=m&&m.get(V.seg[i]+':'+V.pos[i]);
-  return r?r.filter:null;
+  if(r) return r.filter;
+  const c=V.gatkFilter?V.gatkFilter[i]:'';
+  return c||null;
 }
 async function loadVCF(sample){
   if(vcfCache.has(sample)) return vcfCache.get(sample);
@@ -1946,6 +2032,9 @@ async function devBootstrap(root='run'){
                'reference.fa','Reference/reference.fa','reference.fasta',
                'variant_analysis/flumut/markers.tsv',
                'variant_analysis/flumut/markers_all.tsv',
+               // the pipeline's own subtype decision, read instead of re-deriving it
+               'variant_analysis/flumut/subtype.tsv',
+               'variant_analysis/flumut_lowfreq/subtype.tsv',
                // the second FluMut run — markers present below consensus
                'variant_analysis/flumut_lowfreq/markers.tsv',
                'variant_analysis/flumut_lowfreq/markers_all.tsv',
@@ -2704,7 +2793,9 @@ function renderMetaPicker(){
     metaCols.map(c=>`<div class="fld"><label><input type="checkbox" data-mc="${esc(c)}">${esc(c)}</label></div>`).join('');
   el.querySelectorAll('input[data-mc]').forEach(cb=>cb.onchange=()=>{
     metaShow=metaCols.filter(c=>el.querySelector(`input[data-mc="${CSS.escape(c)}"]`).checked);
-    if(NAMES_W < 120+metaShow.length*META_COL_W) NAMES_W=120+metaShow.length*META_COL_W;
+    // metaW(), not metaShow.length*META_COL_W — columns have their own widths now,
+    // so the fixed-width form would under-reserve after any resize.
+    if(NAMES_W < 120+metaW()) NAMES_W=120+metaW();
     schedule();
   });
 }
@@ -2793,6 +2884,11 @@ function currentState(){
     lofreq:g('flofreq').checked, ivar:g('fivar').checked, gatk:g('fgatk').checked,
     hidden:[...hidden], hideEmpty, hideFail,
     qc:{...qcRules}, sort:sortKeys.map(k=>({...k})),
+    /* Only columns actually dragged are stored, so a preset carries no opinion
+       about the rest and they keep taking the default. namesW rides along
+       because a resize widens the pane, and restoring one without the other
+       would put the columns back at a width the pane no longer has room for. */
+    metaColW:[...metaColW.entries()], namesW:NAMES_W,
     qcManual:[...qcManual.entries()]};
 }
 function applyState(st){
@@ -2829,6 +2925,11 @@ function applyState(st){
   g('vqlow').textContent=Math.round(qcRules.maxLowFrac*100)+'%';
   sortKeys=(st.sort||[]).map(k=>({...k})); manualOrder=null;
   if(st.qcManual) qcManual=new Map(st.qcManual);
+  /* Absent means "take the defaults", so an older preset leaves every column at
+     META_COL_W rather than being read as a deliberate choice of it. Guarded on
+     the key rather than replaced unconditionally, for the same reason. */
+  if(st.metaColW) metaColW=new Map(st.metaColW);
+  if(st.namesW>0) NAMES_W=st.namesW;
   if(ready){ applyFilters(); schedule(); }
 }
 function renderPresetList(){
@@ -3144,11 +3245,13 @@ function drawNucleotides(bx,by,bw,bh,c0,c1,r0,r1,rh,expH,expPos){
      left about a fifth of the cell unused on every letter. Still capped by the
      row height, which is what binds once the cell is square. */
   if(letters) ctx.font=Math.min(rh-2,Math.floor(w3*1.6))+'px ui-monospace,monospace';
+  // consVar in the consensus view, vidx in low frequency — see ntSource().
+  const src=ntSource(); if(!src) return;
   for(let r=r0;r<r1;r++){
     const sm=rowOrder[r]; if(sm===undefined) continue;
     const base=sm*NC, y=__yOf(r);
     for(let c=c0;c<c1;c++){
-      const vi=consVar[base+c]; if(vi<0) continue;
+      const vi=src[base+c]; if(vi<0) continue;
       const rc=V.refcod[vi], ac=V.altcod[vi];
       if(!rc||!ac) continue;
       n++;
@@ -3274,6 +3377,24 @@ const ASSESS_LABEL=['Looks real','Treat with caution','Likely artefact','Cannot 
 const ASSESS_CLASS=['good','warn','bad','warn'];
 const AS_MIN_DEPTH=100, AS_MIN_ALT=10, AS_STRAND_MIN_ALT=4, AS_MIN_FREQ=0.01,
       AS_SKEW_BAD=0.40, AS_SKEW_WARN=0.25;
+
+/* The gap between LoFreq's and iVar's fraction at which the panel calls the two
+   callers' disagreement worth noticing. Same "reason rather than taste" rule as
+   the thresholds above, and it could not be set honestly until a real run
+   existed: on the three-sample test the largest gap in the whole table was
+   0.0186, so ANY threshold would have been picked out of the air.
+
+   From the full 143-sample run, over 2,211 changes both fraction callers saw:
+     p50 0.0040 · p75 0.0095 · p90 0.0224 · p95 0.0333 · p99 0.0520 · max 0.0896
+   so 0.05 sits essentially ON the 99th percentile — it selects the top ~1%
+   (31 changes) rather than an arbitrary slice. That is the argument for it, not
+   the round number. 0.10 would be inert (nothing reaches it) and 0.01 would flag
+   a quarter of the table.
+
+   It is a HIGHLIGHT threshold, never a verdict. It deliberately does NOT feed
+   assessCore: the assessment's inputs are fixed and documented, and adding one
+   would silently move every verdict count already measured and written down. */
+const AS_AFCONF_NOTE=0.05;
 let assess=null, altReads=null, assessStats=null;
 
 function vcfRecOf(i){
@@ -3419,7 +3540,43 @@ const isGenotypeAF=i=>afSource&&afSource[i]===2;
    Only the DIFFERENCES are painted. Filling 141 x 4,776 cells with residue
    colours produces an even wash with no signal in it; identity is drawn as a
    faint ground per product instead, so the eye goes straight to what moved. */
-let viewMode='variants';       // 'variants' | 'consensus' | 'nucleotides' | 'selection'
+/* TWO axes, ONE derived string.
+
+   `viewer` is the alphabet, `variantView` is which calls. `viewMode` stays as
+   the single value every draw, hit-test, panel and export path already reads —
+   deriving it instead of replacing it is what keeps this a UI change rather
+   than a rewrite of twenty call sites, each of which is a documented trap in
+   its own right (ntSel, hitAt, the unfiltered site panel, the expanded band,
+   squareRowPx, VCF export gating).
+
+   Default is low frequency, which is what `variants` already was. */
+let viewer='aminoacids';       // 'aminoacids' | 'nucleotides' | 'selection'
+let variantView='lowfreq';     // 'lowfreq' | 'consensus'
+let viewMode='variants';       // DERIVED — 'variants' | 'consensus' | 'nucleotides' | 'selection'
+function deriveViewMode(){
+  if(viewer==='selection')   return 'selection';
+  /* Nucleotides stays ONE viewMode for both variant views. Everything that keys
+     on 'nucleotides' — ntSel, hitAt, the expanded band, squareRowPx's cw/3 unit,
+     the per-base selection ring — is about the ALPHABET and is identical either
+     way. Only the source of what gets painted differs, and that is read from
+     variantView at the two places it actually matters (drawNucleotides and
+     ntCellAt). Splitting it into a fourth viewMode would have duplicated every
+     one of those guards. */
+  if(viewer==='nucleotides') return 'nucleotides';
+  return variantView==='consensus' ? 'consensus' : 'variants';
+}
+// Does this viewer have a variant-view axis at all? selection is per-codon
+// piN-piS and has no notion of a call, so the switch is disabled rather than
+// hidden — a control that vanishes reads as a bug.
+const hasVariantView = v => v==='aminoacids' || v==='nucleotides';
+const vvEnabled = () => true;   // every combination is built as of 2026-08-08
+/* Which grid the nucleotides view reads.
+
+   consVar is filled from EVERY call in the table regardless of the filters,
+   because a sample's consensus base is a fact about the sample. vidx is the
+   filtered call grid. They disagree by exactly the calls the filters remove,
+   which is the distinction the variant-view switch exists to expose. */
+const ntSource = () => variantView==='lowfreq' ? vidx : consVar;
 let consAlt=null;              // NT*NC — AA index of the consensus residue,
                                // 255 where it matches the reference
 /* The variant that WON each consensus cell, or -1. consAlt keeps only the amino
@@ -4047,7 +4204,7 @@ function squareRowPx(){
 }
 // The names pane splits into the sample name plus one narrow column per shown
 // metadata field.
-function metaW(){ return metaShow.length*META_COL_W; }
+function metaW(){ let w=0; for(const c of metaShow) w+=mcw(c); return w; }
 // The assembly strip takes no width on a run without IRMA output, rather than
 // showing eight empty cells that look like a total assembly failure.
 function segColW(){ return segState==='ok'?SEG_W:0; }
@@ -4059,9 +4216,22 @@ function headerCols(){
   const out=[{key:'qc',x:0,w:QC_W}];
   if(segColW()) out.push({key:'seg',x:QC_W,w:segColW()});
   out.push({key:'name',x:QC_W+segColW(),w:nameW()});
-  metaShow.forEach((c,k)=>out.push({key:'meta:'+c,
-    x:QC_W+segColW()+nameW()+k*META_COL_W,w:META_COL_W}));
+  // Cumulative rather than k*META_COL_W: widths are per column now.
+  let mx=QC_W+segColW()+nameW();
+  for(const c of metaShow){ out.push({key:'meta:'+c,x:mx,w:mcw(c)}); mx+=mcw(c); }
   return out;
+}
+/* Which metadata column's RIGHT EDGE the pointer is on, or null. The grab zone
+   straddles the divider so it can be caught coming from either side, and it is
+   tested before the header's sort click so a resize never also re-sorts. */
+const META_GRAB=4;
+function metaEdgeAt(lx,ly){
+  if(!ready||ly>topH()||ly<=topH()-20) return null;
+  for(const h of headerCols()){
+    if(!h.key.startsWith('meta:')) continue;
+    if(Math.abs(lx-(h.x+h.w))<=META_GRAB) return h.key.slice(5);
+  }
+  return null;
 }
 function bodyW(){ return Math.max(50,cssW-NAMES_W); }
 function bodyH(){ return Math.max(50,cssH-topH()); }
@@ -4379,7 +4549,12 @@ function draw(){
     const charW=ctx.measureText('M').width||6.6;
     const nw=nameW();
     const maxChars=Math.max(4,Math.floor((nw-14)/charW));
-    const metaChars=Math.max(2,Math.floor((META_COL_W-10)/charW));
+    // Per column: widening one is only useful if its TEXT stops being truncated,
+    // which is the whole point of making it draggable.
+    const metaChars=metaShow.map(c=>Math.max(2,Math.floor((mcw(c)-10)/charW)));
+    // Cumulative left edges, computed once per frame rather than per row — this
+    // sits inside the draw loop and per-row work here is a documented regression.
+    const metaX=[]; { let x=0; for(const c of metaShow){ metaX.push(x); x+=mcw(c); } }
     for(let r=r0;r<r1;r++){
       const sm=rowOrder[r]; if(sm===undefined) continue;
       // __yOf, not the raw row offset: an expanded sample opens a band in the
@@ -4438,8 +4613,9 @@ function draw(){
         for(let k=0;k<metaShow.length;k++){
           const v=String(m[metaShow[k]]==null?'':m[metaShow[k]]);
           if(!v) continue;
-          ctx.fillText(v.length<=metaChars?v:v.slice(0,metaChars-1)+'…',
-                       QC_W+segColW()+nw+k*META_COL_W+5, y+rh/2+3);
+          const mc=metaChars[k];
+          ctx.fillText(v.length<=mc?v:v.slice(0,mc-1)+'…',
+                       QC_W+segColW()+nw+metaX[k]+5, y+rh/2+3);
         }
       }
     }
@@ -4448,7 +4624,7 @@ function draw(){
     if(metaShow.length){
       ctx.strokeStyle=TH.rule; ctx.beginPath();
       for(let k=0;k<metaShow.length;k++){
-        const x=QC_W+segColW()+nw+k*META_COL_W-.5;
+        const x=QC_W+segColW()+nw+metaX[k]-.5;
         ctx.moveTo(x,by); ctx.lineTo(x,by+bh);
       }
       ctx.stroke();
@@ -4604,7 +4780,43 @@ function legibleInk(fg){
 
    Subtype comes from the reference segment names. A bare A_HA carries none, and
    unconfirmed counts as mismatched rather than as a pass. */
+/* The pipeline's own decision, from variant_analysis/flumut/subtype.tsv, which
+   filter_flumut_subtype.R has written since 2026-08-08. Null when the run
+   predates it.
+
+   Reading it rather than re-deriving it is the whole point. This function used
+   to apply "the same rule" as that script against the reference segment names,
+   and the moment the script gained a SECOND source — IRMA's own subtype call
+   from the consensus headers, which rescues a bare-named reference — that copy
+   stopped merely duplicating the rule and started contradicting it: a bare
+   A_HA on genuinely H5N1 data now keeps its HA/NA markers in the pipeline while
+   this app would still have called them unconfirmed. Two implementations of one
+   rule is how stats.multi disagreed with the panel it was meant to match. */
+let pipeSubtype=null;   // {HA:'H5'|null, NA:'N1'|null, src:{HA,NA}} or null
+function parseSubtypeFile(text){
+  const out={HA:null,NA:null,src:{}};
+  const lines=String(text||'').trim().split(/\r?\n/);
+  if(lines.length<2) return null;
+  const head=lines[0].split('\t').map(s=>s.trim());
+  const gi=head.indexOf('gene'), si=head.indexOf('subtype'), so=head.indexOf('source');
+  if(gi<0||si<0) return null;
+  for(const ln of lines.slice(1)){
+    const c=ln.split('\t');
+    const g=(c[gi]||'').trim(), v=(c[si]||'').trim();
+    if(g!=='HA'&&g!=='NA') continue;
+    out[g] = (v&&v!=='unconfirmed') ? v : null;
+    if(so>=0) out.src[g]=(c[so]||'').trim();
+  }
+  return out;
+}
 function refSubtype(seg,letter){
+  // The pipeline's answer wins where it exists.
+  if(pipeSubtype){
+    const v=pipeSubtype[seg];
+    return (v&&v[0]===letter)?v:null;
+  }
+  // Older runs: fall back to this app's own read of the reference names, which
+  // is what the pipeline did before it had a second source.
   for(const nm of rawLoci){
     if(shortLocus(nm)!==seg) continue;
     const m=/([HN]\d+)$/.exec(nm);
@@ -5006,8 +5218,25 @@ async function renderVariant(el,i){
      swine codons that looked multi-call were only this. LoFreq wins the
      representative slot because its frequency is the one that matches reads. */
   const mateBy=new Map();
+  /* Picked up in the SAME pass rather than a second one: the fraction each
+     fraction-caller reported for THIS exact change, so the panel can show the
+     two numbers behind af_conflict instead of only their absolute gap.
+
+     Matched on position AND alt base, not just the codon — a codon can carry
+     more than one change, and pairing a LoFreq call with iVar's reading of a
+     DIFFERENT base would invent a disagreement. Same col too, so a nucleotide
+     read in two frames compares within its own product.
+
+     allele_fraction is each caller's OWN value for LoFreq and iVar alike
+     (convertVCFtoTable.R only borrows for GATK4), so V.afrac is the right
+     source and needs no VCF or TSV read. */
+  const fracBy=new Map();
   for(let n=0;n<V.n;n++){
     if(V.row[n]!==V.row[i]||V.col[n]!==V.col[i]) continue;
+    if(V.pos[n]===V.pos[i]&&V.altnt[n]===V.altnt[i]&&isFractionCaller(n)){
+      const f=V.afrac?V.afrac[n]:NaN;
+      if(isFinite(f)) fracBy.set(V.method[n],f);
+    }
     const k=V.pos[n]+':'+V.altnt[n];
     if(!mateBy.has(k)||V.method[n]===M_LOFREQ) mateBy.set(k,n);
   }
@@ -5089,6 +5318,40 @@ async function renderVariant(el,i){
           if(p==='FALSE') return ` <span class="warn">· iVar PASS false</span>`;
           if(p==='TRUE')  return ` <span style="opacity:.6">· iVar PASS</span>`;
           return ''; })()}</dd>
+      ${/* af_conflict, which the pipeline has emitted since 2026-08 and nothing
+            has ever shown. Two INDEPENDENT measurements of one quantity, so the
+            gap between them is evidence about the call.
+
+            Three outcomes, and the third is the one worth getting right: both
+            callers saw it and here is the gap; only one saw it, which is NOT
+            the same as agreeing and must not read as agreement; or the caller
+            states a genotype and there is nothing to compare at all. A blank
+            row would collapse all three into "nothing to see". */''}
+      ${(()=>{
+        if(!isFractionCaller(i))
+          return `<dt>caller agreement</dt><dd class="dim">`+
+                 `n/a — ${esc(CALLER[V.method[i]])} reports a genotype, not a fraction</dd>`;
+        const lo=fracBy.get(M_LOFREQ), iv=fracBy.get(M_IVAR);
+        /* Prefer the pipeline's own column; fall back to the two fractions in
+           hand. Same precedence reconcileFrequencies uses, and it means a table
+           written before af_conflict existed still gets the comparison. */
+        let gap = V.afConf?V.afConf[i]:NaN, computed=false;
+        if(!isFinite(gap)&&lo!==undefined&&iv!==undefined){ gap=Math.abs(lo-iv); computed=true; }
+        if(!isFinite(gap)||lo===undefined||iv===undefined){
+          const absent = V.method[i]===M_LOFREQ?'iVar':'LoFreq';
+          return `<dt>caller agreement</dt><dd class="dim">`+
+                 `no comparison — ${absent} did not call this change</dd>`;
+        }
+        const pct=v=>(v*100).toFixed(2)+'%', pts=gap*100, big=gap>AS_AFCONF_NOTE;
+        return `<dt>caller agreement</dt><dd class="${big?'warn':''}">`+
+          `LoFreq ${pct(lo)} vs iVar ${pct(iv)} · <b>${pts.toFixed(2)} points apart</b>`+
+          (computed?` <span class="dim">· computed here</span>`:'')+
+          (big?`<div class="note" style="margin:4px 0 0">Top ~1% of caller `+
+               `disagreements on this run. The two are given different mpileup `+
+               `filters on purpose — LoFreq requires proper pairs, iVar counts `+
+               `anomalous ones — and they diverge most where reads are thin.</div>`:'')+
+          `</dd>`;
+      })()}
       <dt>nt position</dt><dd>${V.pos[i]} (${esc(V.refnt[i])}→${esc(V.altnt[i])})</dd>
       <dt>codon</dt><dd>${esc(V.refcod[i]||'?')} → ${esc(V.altcod[i]||'?')}</dd>
       <dt>segment</dt><dd>${esc(V.seg[i])}</dd>
@@ -5211,7 +5474,15 @@ function renderSite(el,col){
      It is a change of SOURCE, not of presentation, so the panel says which one
      it used rather than leaving two different meanings of "calls here" to be
      told apart by counting. */
-  const unfiltered = viewMode==='nucleotides';
+  /* Unfiltered ONLY in the consensus nucleotides view. That listing was made
+     unfiltered because the view paints from consVar, which ignores the filters —
+     so a codon whose only calls were filtered out reported "no calls under the
+     current filters" beside a base plainly on screen. In LOW FREQUENCY the view
+     paints from vidx, which IS the filtered grid, so the same reasoning now
+     argues the other way: an unfiltered listing there would show rows the view
+     itself is not drawing. The rule is "match what was painted", not
+     "nucleotides means unfiltered". */
+  const unfiltered = viewMode==='nucleotides' && variantView==='consensus';
   let rows=[];
   if(unfiltered){
     /* Both callers emit a row for the same change, so the raw table lists most
@@ -5383,12 +5654,16 @@ function cellAt(cx,cy){
    3 px wide (below that the view draws codon marks and selNt is not offered),
    and a snap to a neighbouring codon would land on a different base. */
 function ntCellAt(cx,cy){
-  if(!ready||!consVar||cx<NAMES_W||cy<topH()) return null;
+  // The SAME grid drawNucleotides painted from, or a click lands on nothing
+  // wherever the two disagree — which is the whole class of bug this function
+  // was written to fix, just with the filtered/unfiltered roles swapped.
+  const src=ntSource();
+  if(!ready||!src||cx<NAMES_W||cy<topH()) return null;
   const dr=displayRowAt(cy); if(dr<0||dr>=NTvis) return null;
   const sm=rowOrder[dr]; if(sm===undefined) return null;
   const c=Math.floor(scrollCol+(cx-NAMES_W)/cw);
   if(c<0||c>=NC) return null;
-  const vi=consVar[sm*NC+c];
+  const vi=src[sm*NC+c];
   return vi<0?null:{i:vi};
 }
 // One entry point, so the tooltip and the click can never disagree about what
@@ -5396,9 +5671,12 @@ function ntCellAt(cx,cy){
 function hitAt(cx,cy){ return viewMode==='nucleotides'?ntCellAt(cx,cy):cellAt(cx,cy); }
 const tip=document.getElementById('tip');
 cv.addEventListener('mousemove',e=>{
-  if(!drag&&!sizing){
+  if(!drag&&!sizing&&!colResize){
     const rct=cv.getBoundingClientRect(), lx=e.clientX-rct.left, ly=e.clientY-rct.top;
+    // A metadata divider takes precedence over the header's sort pointer, so the
+    // cursor tells you which of the two a click will do before you commit to it.
     cv.style.cursor = Math.abs(lx-NAMES_W)<5 ? 'col-resize'
+      : metaEdgeAt(lx,ly) ? 'col-resize'
       : (ready&&lx<NAMES_W&&(ly<=topH()&&ly>topH()-20||lx<QC_W&&ly>topH())) ? 'pointer'
       : 'default';
   }
@@ -5419,7 +5697,7 @@ cv.addEventListener('mousemove',e=>{
 });
 cv.addEventListener('mouseleave',()=>{tip.style.display='none';});
 
-let drag=null,sizing=null,downAt=null,dragRow=null;
+let drag=null,sizing=null,downAt=null,dragRow=null,colResize=null;
 /* Inverse of __yOf. Without the band correction, every click below an expanded
    sample lands one row too high — including the click that closes it. Returns
    -1 for a point inside the band itself, which is not a row. */
@@ -5464,6 +5742,21 @@ cv.addEventListener('mousedown',e=>{
       cv.style.cursor='grabbing'; return;
     }
   }
+  /* Column resize, checked BEFORE the sort click below — the grab zone overlaps
+     the header's clickable area, and a drag that also re-sorted the table would
+     be indefensible. */
+  {
+    /* No `lx < NAMES_W` precondition: metaEdgeAt already matches only a real
+       metadata column edge inside the header band, so the extra test adds
+       nothing — and it actively breaks the case where the columns are wider
+       than the pane, which is exactly when someone reaches for the handle. */
+    const mc=metaEdgeAt(lx,ly);
+    if(mc){
+      colResize={col:mc, x0:e.clientX, w0:mcw(mc), names0:NAMES_W};
+      cv.style.cursor='col-resize';
+      e.preventDefault(); return;
+    }
+  }
   // header row: click sorts, shift-click adds a level
   if(ready&&lx<NAMES_W&&ly<=topH()&&ly>topH()-20){
     for(const h of headerCols()){
@@ -5484,6 +5777,17 @@ cv.addEventListener('mousedown',e=>{
   drag={x:e.clientX,y:e.clientY,sc:scrollCol,sr:scrollRow};
 });
 window.addEventListener('mousemove',e=>{
+  if(colResize){
+    /* NAMES_W grows with the column, so widening a metadata field does not eat
+       the sample-name column beside it — that is what makes it read as Excel
+       rather than as a squeeze. nameW() has a 60px floor and would otherwise
+       absorb the change silently. */
+    const w=Math.max(META_COL_MIN, colResize.w0+(e.clientX-colResize.x0));
+    metaColW.set(colResize.col, w);
+    NAMES_W=Math.max(120, colResize.names0+(w-colResize.w0));
+    clampScroll(); schedule();
+    return;
+  }
   if(dragRow){
     const ly=e.clientY-cv.getBoundingClientRect().top;
     const dr=Math.max(0,Math.min(NTvis,displayRowAt(ly)));
@@ -5496,6 +5800,11 @@ window.addEventListener('mousemove',e=>{
   scrollRow=drag.sr-(e.clientY-drag.y)/rowH(); schedule();
 });
 window.addEventListener('mouseup',e=>{
+  if(colResize){
+    colResize=null; cv.style.cursor='default';
+    savePresetState();          // widths ride along with the working state
+    return;
+  }
   if(dragRow){
     cv.style.cursor='default';
     if(!dragRow.moved){
@@ -5582,7 +5891,12 @@ function placeModeSwitch(){
      band carries text there, so nothing is covered. */
   l.style.top='6px'; l.style.left='6px';   // over the empty names-pane header
   const on=ready&&NT>0;
+  /* vvR hides on the same condition as the viewer buttons. It used to stay up
+     with "low frequency" lit before a run was even opened — a control claiming
+     a state for data that is not there. Both now show only their labels until
+     something loads. */
   l.style.display=r.style.display=on?'flex':'none';
+  { const vr=document.getElementById('vvR'); if(vr) vr.style.display=on?'flex':'none'; }
   // Each view gets its own legend; showing both at once invites reading the
   // frequency ramp as if it coloured the selection cells.
   const sel=document.getElementById('sellegend'), freq=document.getElementById('lramp');
@@ -5598,10 +5912,51 @@ function placeModeSwitch(){
       let both=0; for(const [,c] of snpCells) if(c.piN>0&&c.piS>0) both++;
       bothEl.textContent=`${both.toLocaleString()} of ${snpCells.size.toLocaleString()} cells`;
     } else if(bothEl) bothEl.textContent='few cells';
+    /* Nucleotides joins selection here. Its cells are coloured by BASE, not by
+       allele frequency, so leaving the frequency ramp up invites exactly the
+       misreading this block already guards against — and the ATGC key that
+       replaces it would otherwise sit under a legend for a quantity the view
+       does not encode. The ntlegend's own h4/.lramp/.lticks are excluded
+       alongside sellegend's for the same reason. */
+    const ntl0=document.getElementById('ntlegend');
+    const ownLegend = viewMode==='selection'||viewMode==='nucleotides';
     if(freq&&freq.parentElement) freq.parentElement.querySelectorAll('h4,.lramp,.lticks')
-      .forEach(el=>{ if(!sel.contains(el)) el.style.display = viewMode==='selection'?'none':''; });
+      .forEach(el=>{ if(!sel.contains(el)&&!(ntl0&&ntl0.contains(el)))
+        el.style.display = ownLegend?'none':''; });
   }
-  for(const b of [...l.children,...r.children]) b.classList.toggle('on',b.dataset.m===viewMode);
+  for(const b of [...l.children,...r.children]) b.classList.toggle('on',b.dataset.v===viewer);
+  /* The variant-view switch stays VISIBLE in selection and goes disabled
+     instead. A control that disappears reads as a bug; one that is greyed says
+     "not applicable here", which is the true statement. Same for the
+     not-yet-built nucleotides x low-frequency combination. */
+  const active = hasVariantView(viewer);
+  const g=document.getElementById('vvR');
+  if(g){
+    g.style.opacity = active ? '' : '.4';
+    for(const b of g.children){
+      b.disabled = !active;
+      b.style.cursor = active ? '' : 'not-allowed';
+      b.title = !active ? 'Selection is per codon — it has no low-frequency or consensus form'
+              : b.dataset.vv==='lowfreq'
+                ? 'Every call above the current filters'
+                : 'Only what reached the sample’s consensus';
+      b.classList.toggle('on', active && b.dataset.vv===variantView);
+    }
+  }
+  const vp=document.getElementById('vvpick'); if(vp) vp.style.opacity = active ? '' : '.55';
+  // Letters are amino acids; in the nucleotides view the cells carry bases, so
+  // the residue-scheme control has nothing to colour and the ATGC key replaces it.
+  const ntl=document.getElementById('ntlegend'), aaf=document.getElementById('aaschemefld');
+  if(ntl){
+    ntl.hidden = viewMode!=='nucleotides';
+    // Painted FROM NT_COL rather than repeated in CSS, so the key and the cells
+    // can never disagree — the same reason the frequency swatches follow RAMPS.
+    const sw=document.getElementById('ntramp');
+    if(sw) ['A','C','G','T'].forEach((b,i)=>{
+      if(sw.children[i]) sw.children[i].style.background=NT_COL[b];
+    });
+  }
+  if(aaf) aaf.style.display = viewMode==='nucleotides' ? 'none' : '';
 }
 function dpanelW(){ const d=document.getElementById('detail');
   return d&&!d.classList.contains('off')?d.getBoundingClientRect().width:0; }
@@ -5855,20 +6210,64 @@ function setViewMode(m){
   // A base selection belongs to the nucleotides view; anywhere else selCol is
   // the codon and a stored third would narrow the next selection band silently.
   if(m!=='nucleotides') selNt=null;
-  try{ lsSet('viewmode',m); }catch(e){}
+  // Not persisted: the view always opens at amino acids · low frequency — see
+  // the comment beside that default. A key nothing reads only invites a future
+  // reader to believe it means something.
   // The codon table is 57 MB, so it is read on first use of this view rather
   // than at open. schedule() again on arrival — the first frame draws empty.
   if(m==='selection'&&!snpCells) ensureSNPGenie().then(schedule);
   placeModeSwitch(); schedule();
 }
+/* The two controls set their own axis and let setViewMode() work out the rest,
+   so there is still exactly one place that decides what a mode change does. */
+function setViewer(v){
+  if(v===viewer) return;
+  viewer=v;
+  // Landing on a combination that is not built yet would show the wrong view
+  // silently. Move to the one that is, rather than drawing something the
+  // selector does not claim.
+  if(hasVariantView(v)&&!vvEnabled(v,variantView)) variantView='consensus';
+  setViewMode(deriveViewMode());
+}
+function setVariantView(vv){
+  if(vv===variantView||!hasVariantView(viewer)) return;
+  variantView=vv;
+  const m=deriveViewMode();
+  if(m!==viewMode){ setViewMode(m); return; }
+  /* SAME viewMode, different source — and this branch is why the click used to
+     do nothing at all.
+     Nucleotides derives to 'nucleotides' for both variant views, so
+     setViewMode's `if(m===viewMode) return` swallowed the change: variantView
+     updated, nothing repainted, and the button highlight never moved. The
+     redraw has to happen here because there is no mode transition to hang it on.
+     Anything that keys on viewMode is untouched by design; only the painted
+     source changed, so a refresh and a repaint are exactly what is owed. */
+  if(expanded!==null) refreshBand();
+  placeModeSwitch(); schedule();
+}
 for(const id of ['modeL','modeR'])
   document.getElementById(id).addEventListener('click',e=>{
-    const b=e.target.closest('button'); if(b) setViewMode(b.dataset.m); });
+    const b=e.target.closest('button'); if(b) setViewer(b.dataset.v); });
+document.getElementById('vvR').addEventListener('click',e=>{
+  const b=e.target.closest('button'); if(b&&!b.disabled) setVariantView(b.dataset.vv); });
 /* 'selection' is deliberately NOT restorable — it reads a 57 MB codon table, and
    reopening the app straight into a long load is a worse default than starting
    where every run can start. Nucleotides costs nothing extra, so it restores. */
-try{ const v=lsGet('viewmode');
-     if(v==='consensus'||v==='variants'||v==='nucleotides') viewMode=v; }catch(e){}
+/* The view is NOT restored. Every run opens in amino acids · low frequency.
+
+   `selection` was already excluded for a concrete reason — it reads a 57 MB
+   codon table and reopening straight into a long load is a bad default — and
+   the same argument generalises: the view is a property of what you are doing
+   right now, not of the app. Reopening into whatever mode a previous session
+   happened to end in means the first thing on screen is not the thing most runs
+   should start from, and a consensus or nucleotides view can look empty on a
+   run whose calls are all sub-consensus, which reads as a failed load.
+
+   Amino acids · low frequency is the broadest view — every call above the
+   filters, in the alphabet the curated database, FluMut and the panel all
+   speak. Filters, sort keys, QC overrides and column widths still persist,
+   because those ARE properties of how the reader works. */
+viewMode=deriveViewMode();
 
 // ?run=<dir> picks which linked run to auto-load in dev; defaults to 'run'
 /* ---- desktop shell ---------------------------------------------------------
