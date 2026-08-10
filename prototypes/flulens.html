@@ -491,6 +491,11 @@ the changed base's colour.</div>
           <option value="curated">curated only</option>
           <option value="flumut">FluMut markers only</option>
           <option value="either">curated or FluMut</option>
+          <!-- POSITIVE and opt-in, which is the only safe shape for this. IRMA
+               speaks to 3.5% of caller positions, so a negative toggle beside
+               the caller checkboxes would hide 96.5% of calls and read as
+               "IRMA disagrees" when it means "IRMA is silent". -->
+          <option value="irma">IRMA-corroborated only</option>
         </select></div>
       <!-- Caller order is LoFreq · iVar · GATK4 everywhere in the app. The two
            that report an allele fraction sit together; the genotype caller is
@@ -506,6 +511,31 @@ the changed base's colour.</div>
            placeModeSwitch. -->
       <div class="note" id="consfilternote" hidden>Not applied in the consensus
         view — a consensus is established, not filtered.</div>
+    </div>
+
+    <!-- 6b · consensus source.
+         Two consensuses exist and they are not the same object. This app derives
+         one by painting calls above 50% onto the reference; IRMA produced one,
+         and IRMA's is the one FluMut screens. Where both speak they agree
+         perfectly — measured, 0 same-cell disagreements — so this is not a
+         contradiction to resolve but a coverage difference to expose: IRMA maps
+         to its own refined contig and recruits reads BWA soft-clips at the
+         segment termini.
+
+         Shown only in the consensus view — hidden rather than greyed elsewhere,
+         because outside it there is no consensus to choose a source for, which
+         is an inapplicable control rather than a disabled one. The nucleotides
+         alphabet is a different viewMode entirely, so this never has to explain
+         itself there. -->
+    <div class="sec" id="conssec" hidden>
+      <h4>Consensus</h4>
+      <div class="fld"><span>source</span>
+        <select id="conssrc" style="flex:1;min-width:0">
+          <option value="derived">derived — calls &gt; 50%</option>
+          <option value="irma">IRMA consensus</option>
+        </select></div>
+      <div class="fld"><label><input type="checkbox" id="cthin"> mark thin coverage</label></div>
+      <div class="note" id="consnote"> </div>
     </div>
 
     <!-- 7 · samples. Sliders first, then the checkboxes that act on them. -->
@@ -646,6 +676,14 @@ const THEMES={
         selRing:'#dce6ff',curated:'#fab219',
         trackTop:'rgba(157,197,244,.9)',trackBot:'rgba(37,106,191,.12)',
         qcPass:'#3f7a4a',qcPassOn:'#4bbf4b',qcFail:'#8a4444',qcFailOn:'#e06c6c',rowSel:'rgba(122,162,247,.13)',panelBg:'#14171d',fmMark:'#4bbf9b',consSame:'rgba(255,255,255,.09)',consDiff:'#7aa2f7',pileBg:'#0f1218',pileRef:'rgba(255,255,255,.22)',
+        /* IRMA consensus only. consGap is where IRMA placed NOTHING — it must
+           not read as "matches the reference", so it is painted OVER the
+           identity ground rather than left as a hole in it. consAmb is an N in
+           the contig: IRMA had reads and could not call, which is a different
+           statement again. consThin marks a change resting under min_depth
+           against IRMA's OWN coverage; amber because it qualifies a change
+           rather than being one. */
+        consGap:'rgba(255,255,255,.028)',consAmb:'#b08a4a',consThin:'#d9a441',
         /* The opened row, and the droplines running from its changes down through
            the band. The droplines are deliberately NOT consDiff: against a band
            full of blue coverage bars a blue line disappears, which is the one
@@ -659,6 +697,7 @@ const THEMES={
          selRing:'#12356b',curated:'#b8790a',
          trackTop:'rgba(42,120,214,.75)',trackBot:'rgba(42,120,214,.08)',
          qcPass:'#7aa87a',qcPassOn:'#0a7a0a',qcFail:'#c99a9a',qcFailOn:'#b02525',rowSel:'rgba(42,120,214,.11)',panelBg:'#f2f2ef',fmMark:'#0a7a5a',consSame:'rgba(0,0,0,.10)',consDiff:'#2a78d6',pileBg:'#e9e9e4',pileRef:'rgba(0,0,0,.18)',
+         consGap:'rgba(0,0,0,.035)',consAmb:'#9a7020',consThin:'#b8790a',
          expRow:'rgba(0,0,0,.075)',dropLine:'#128a12'}
 };
 let themeName='dark', rampName='blue';
@@ -2158,6 +2197,13 @@ async function devBootstrap(root='run'){
                // marker can be joined to a variant, so a dev or hosted run that
                // omits it looks like a run with no markers at all
                'variant_analysis/flumut/flumut_position_map.tsv',
+               /* IRMA's consensus, already placed on this reference. Both or
+                  neither: the residue table without the frame table cannot tell
+                  an absent segment from an agreeing one. */
+               'variant_analysis/irma/irma_position_map.tsv',
+               'variant_analysis/irma/irma_consensus_aa.tsv',
+               // IRMA's minority calls, reconciled to the reference frame
+               'variant_analysis/irma/irma_variants.tsv',
                'variant_analysis/flumut_lowfreq/subtype.tsv',
                // the second FluMut run — markers present below consensus
                'variant_analysis/flumut_lowfreq/markers.tsv',
@@ -2431,7 +2477,16 @@ async function loadRun(){
     // gatkCache too, or a second run shows the first run's FILTER values
     hidden=new Set(); vcfCache=new Map(); gatkCache=new Map(); ivarCache=new Map();
     depthCache=new Map();       // or a second run reports the first run's coverage
-    selVariant=null; selCol=null; selNt=null;
+    /* The IRMA grids are sized NT*NC and keyed by this run's row order, so
+       carrying them into a second run is not merely stale — it indexes the new
+       run's samples with the old run's rows. Cleared here for the same reason
+       gatkCache and depthCache are. */
+    irmaAA=null; irmaSt=null; irmaDep=null; irmaFrame=null;
+    irmaState='unknown'; irmaStats=null; irmaBusy=null;
+    // Keyed by sample NAME rather than row, so this one is merely stale rather
+    // than mis-indexed across runs — still wrong, still cleared here.
+    irmaVar=null; irmaVarState='unknown'; irmaVarStats=null; irmaVarBusy=null;
+    selVariant=null; selCol=null; selNt=null; selIrma=null;
     assess=null; altReads=null; assessStats=null; assessReady=false; assessBusy=null;
     await phase('laying out');
     applyFilters(); ready=true; rowPx=0; scrollRow=0;
@@ -2493,6 +2548,13 @@ function applyFilters(){
       if(sites==='curated' && !c) continue;
       if(sites==='flumut'  && !f) continue;
       if(sites==='either'  && !c && !f) continue;
+      /* Corroboration is per CALL, not per column — the same codon can hold a
+         call IRMA sees and one it does not, so this cannot use a column set
+         like the other three. When the table has not loaded yet nothing is
+         dropped: the select's own handler kicks the load and re-applies, and
+         filtering to "corroborated" against an empty table would blank the
+         grid and read as "IRMA corroborates nothing". */
+      if(sites==='irma' && irmaVar && irmaVerdict(i).state!=='corroborated') continue;
     }
     if(V.method[i]===M_LOFREQ && !useLo) continue;
     if(V.method[i]===M_IVAR   && !useIv) continue;
@@ -2958,6 +3020,18 @@ for(const id of ['fdepth','ffreq','falt','fnonsyn','fsites','fassess','flofreq',
       ensureAssessments().then(()=>{ applyFilters(); schedule(); });
       return;
     }
+    /* Same shape as the assessment load above. "IRMA-corroborated only" needs
+       both tables — the variant table to know what IRMA saw, the consensus grid
+       so `silent` and `cannot say` do not collapse — and until they are here
+       applyFilters deliberately drops nothing rather than showing an empty grid
+       that reads as "IRMA corroborates none of this". */
+    if(document.getElementById('fsites').value==='irma' && !irmaVar){
+      applyFilters(); schedule();
+      ensureIrmaVar()
+        .then(()=>irmaVar?ensureIRMA():null)
+        .then(()=>{ applyFilters(); schedule(); renderDetail(); });
+      return;
+    }
     applyFilters(); schedule();
   });
 
@@ -3326,22 +3400,67 @@ function drawConsensus(bx,by,bw,bh,c0,c1,r0,r1,rh,expH,expPos){
   paintExpandedRow(bx,by,bw,rh);
   // differences
   const mark=Math.max(cw<1?3:1,cw), mh=Math.max(cw<1?2:1,rh);
-  ctx.fillStyle=TH.consDiff;
   /* consSource(), not consAlt: this view is amino acids, so a silent change is
      not a change and must not be painted. The residue is read from the winning
      call rather than consAlt for the same reason — consAlt holds the overall
      winner, which may be the silent one. */
   const SRC=consSource();
-  const rects=new Path2D(); let n=0;
-  for(let r=r0;r<r1;r++){
-    const sm=rowOrder[r]; if(sm===undefined) continue;
-    const base=sm*NC, y=__yOf(r);
-    for(let c=c0;c<c1;c++){
-      if(SRC[base+c]<0) continue;
-      rects.rect(bx+(c-scrollCol)*cw, y, mark, mh); n++;
+  const IR=irmaOn()?irmaSt:null;   // IRMA REPLACES SRC here — it is a source, not a layer
+  let n=0;
+  if(IR){
+    /* One pass, four paths. Painting IRMA needs three things the derived grid
+       never did, and the ordering matters:
+
+       GAPS go down over the identity ground. A codon IRMA never placed — an
+       absent segment, the part of a truncated contig that did not reach, or a
+       sample the pipeline never stated — must not share a ground with one IRMA
+       placed and agreed with, or no-coverage reads as no-change. That is exactly
+       the misreading the zero-coverage marker flag exists to prevent, one view
+       over.
+
+       AMBIGUOUS is its own colour, not a gap and not a change: IRMA had reads
+       here and still could not call a base. "N" is a third answer.
+
+       THIN rides ON TOP of the change, never instead of it — a thin change is
+       still a change, and swapping the mark would make a low-coverage residue
+       vanish from the view whose job is to show it. Changes only; the 119,731
+       thin residues that MATCH the reference stay panel-only, per markThin. */
+    const gaps=new Path2D(), amb=new Path2D(), diff=new Path2D(), thin=new Path2D();
+    const th=Math.max(1,Math.min(2,rh*0.34));
+    for(let r=r0;r<r1;r++){
+      const sm=rowOrder[r]; if(sm===undefined) continue;
+      const base=sm*NC, y=__yOf(r);
+      for(let c=c0;c<c1;c++){
+        const s=IR[base+c], x=bx+(c-scrollCol)*cw;
+        if(s===0||s===IRMA_ST.thin) continue;         // agrees; thin is panel-only
+        if(s===IRMA_ST.ambiguous){ amb.rect(x,y,mark,mh); continue; }
+        if(irmaIsChange(s)){
+          diff.rect(x,y,mark,mh); n++;
+          // change_thin and change_nodepth both qualify the change: one is below
+          // the floor, the other has no floor to be below. Neither is a clean call.
+          if(markThin&&s!==IRMA_ST.change) thin.rect(x,y+Math.max(1,mh)-th,mark,th);
+          continue;
+        }
+        gaps.rect(x,y,Math.max(1,cw),Math.max(1,rh));  // uncovered, or never stated
+      }
     }
+    ctx.fillStyle=TH.consGap;  ctx.fill(gaps);
+    ctx.fillStyle=TH.consAmb;  ctx.fill(amb);
+    ctx.fillStyle=TH.consDiff; ctx.fill(diff);
+    if(markThin){ ctx.fillStyle=TH.consThin; ctx.fill(thin); }
+  } else {
+    ctx.fillStyle=TH.consDiff;
+    const rects=new Path2D();
+    for(let r=r0;r<r1;r++){
+      const sm=rowOrder[r]; if(sm===undefined) continue;
+      const base=sm*NC, y=__yOf(r);
+      for(let c=c0;c<c1;c++){
+        if(SRC[base+c]<0) continue;
+        rects.rect(bx+(c-scrollCol)*cw, y, mark, mh); n++;
+      }
+    }
+    ctx.fill(rects);
   }
-  ctx.fill(rects);
   if(glyphs){
     ctx.globalAlpha=Math.min(1,(cw-7)/3);
     const gb=aaScheme==='none'?0:2;
@@ -3349,8 +3468,12 @@ function drawConsensus(bx,by,bw,bh,c0,c1,r0,r1,rh,expH,expPos){
       const sm=rowOrder[r]; if(sm===undefined) continue;
       const base=sm*NC, y=__yOf(r);
       for(let c=c0;c<c1;c++){
-        const vi=SRC[base+c]; if(vi<0) continue;
-        const a=V.alt[vi]; if(a===255) continue;
+        // The residue comes from whichever source painted the cell, or the
+        // letter and the mark under it can disagree.
+        let a;
+        if(IR){ if(!irmaIsChange(IR[base+c])) continue; a=irmaAA[base+c]; }
+        else { const vi=SRC[base+c]; if(vi<0) continue; a=V.alt[vi]; }
+        if(a===255) continue;
         ctx.drawImage(atlas,a*atlasGW,(gb+1)*atlasGH,atlasGW,atlasGH,
           bx+(c-scrollCol)*cw, y, cw, rh);
       }
@@ -3765,6 +3888,258 @@ function buildConsensus(){
 /* Which consensus grid a view reads. The alphabet decides: nucleotides shows
    every base that changed, amino acids only residues that changed. */
 const consSource = () => viewer==='nucleotides' ? consVar : consVarAA;
+
+/* ---- IRMA's consensus, READ rather than re-derived --------------------------
+
+   buildConsensus above paints calls above 50% onto the reference. IRMA produced
+   its own consensus, and IRMA's is the one FluMut screens — so until this
+   existed the app showed a different consensus from the one the marker calls
+   were made against.
+
+   The two are not in conflict. Measured across 1,716 sample x product frames:
+   wherever both have a call they agree on the residue, 0 exceptions. The gap is
+   one-directional — IRMA carries changes the reference-based callers have
+   nothing at, because it maps to its own iteratively refined contig and recruits
+   reads BWA soft-clips at the segment termini. So this is a second source, not a
+   correction, and it gets a source switch rather than replacing anything.
+
+   COORDINATES ARE NOT INFERRED HERE. The pipeline aligns each contig to the
+   reference per sample per segment and publishes residues already on reference
+   codon numbering (IRMA_POSITION_MAP), for the same reason the FluMut map
+   exists: 58 of 1,716 frames are truncated, 26 of the 38 short contigs by an
+   amount that is not a multiple of 3, and one contig is a base LONGER than the
+   reference — a position-1 assumption there returns confidently wrong residues
+   rather than failing visibly. Without the file this view says so and offers
+   nothing. It never falls back to guessing a frame.
+
+   DEPTH IS IRMA'S OWN, not the BWA pileup's. min_depth exists because LoFreq and
+   GATK4 report false fixations below it, and applying that floor to an IRMA call
+   means reading depth from the alignment that produced the call. The two
+   disagree exactly where IRMA is interesting: MC-732 A_NS positions 1-5 have
+   IRMA 56-61x against BWA 2-3x. */
+const IRMA_ST={change:1, change_thin:2, change_nodepth:3,
+               thin:4, ambiguous:5, uncovered:6};
+const IRMA_LABEL={1:'change', 2:'change (thin)', 3:'change (depth unknown)',
+                  4:'matches reference (thin)', 5:'ambiguous — IRMA has N',
+                  6:'no placement in the contig'};
+// The three that are a residue CHANGE. Kept as one predicate so the draw loop,
+// the hit-test and the panel cannot drift on what counts as a change.
+const irmaIsChange = s => s>=1 && s<=3;
+let irmaAA=null;      // Uint8Array NT*NC — residue index, 255 = not stated
+let irmaSt=null;      // Uint8Array NT*NC — IRMA_ST code; 0 agrees, 255 unknown
+let irmaDep=null;     // Int32Array NT*NC — IRMA depth, -1 = unknown
+let irmaFrame=null;   // Map `row|product` -> {status, placed, len}
+let irmaState='unknown', irmaStats=null, irmaBusy=null;
+/* Which consensus the view paints, and whether a thin change is marked in the
+   grid. Thin is OFF by default and marks CHANGES ONLY: 119,731 residues match
+   the reference below the floor — 18% of every codon in the run — and shading
+   those would bury the 33 changes this view exists to show. The depth of any
+   single cell is always available in the panel, the way item 0a reports it. */
+let consSrc='derived';
+let markThin=false;
+const irmaOn = () => consSrc==='irma' && viewer!=='nucleotides' && irmaSt;
+
+function ensureIRMA(){
+  if(irmaSt) return Promise.resolve();
+  if(irmaBusy) return irmaBusy;
+  const fa=findFile('variant_analysis/irma/irma_consensus_aa.tsv',
+                    'irma_consensus_aa.tsv');
+  const fm=findFile('variant_analysis/irma/irma_position_map.tsv',
+                    'irma_position_map.tsv');
+  /* Both or nothing. The residue table without the frame table cannot tell an
+     absent segment from an agreeing one, which is precisely the misreading this
+     is built to prevent. */
+  if(!fa||!fm){
+    irmaState = findAll(/irma/i).length ? 'nofile' : 'norun';
+    return Promise.resolve();
+  }
+  irmaBusy=(async()=>{
+    const t0=performance.now();
+    const rowOf=new Map(names.map((n,i)=>[n,i]));
+    const AA=new Uint8Array(NT*NC).fill(255);
+    const ST=new Uint8Array(NT*NC).fill(255);   // 255 = the pipeline never said
+    const DP=new Int32Array(NT*NC).fill(-1);
+    const frame=new Map();
+    let frames=0, resid=0, unmatched=0;
+
+    // 1. Frames first. Every codon of a placed product starts at "agrees", so a
+    //    residue absent from the residue table means agreement AT DEPTH — but
+    //    only inside a frame the pipeline actually placed. Everywhere else stays
+    //    255 and paints as a gap.
+    for(const line of (await fm.text()).split('\n').slice(1)){
+      if(!line) continue;
+      const f=line.split('\t'); if(f.length<6) continue;
+      const r=rowOf.get(f[0]), rec=PROD.get(f[1]);
+      if(r===undefined||!rec){ unmatched++; continue; }
+      frames++;
+      frame.set(r+'|'+f[1], {status:f[3], placed:+f[5], len:+f[4]});
+      if(f[3]==='identity'||f[3]==='aligned')
+        ST.fill(0, r*NC+rec.off, r*NC+rec.off+rec.aa);
+    }
+
+    // 2. Then the residues that are not a plain match at depth.
+    for(const line of (await fa.text()).split('\n').slice(1)){
+      if(!line) continue;
+      const f=line.split('\t'); if(f.length<6) continue;
+      const r=rowOf.get(f[0]), rec=PROD.get(f[1]);
+      if(r===undefined||!rec){ unmatched++; continue; }
+      const p=+f[2];
+      if(!(p>=1&&p<=rec.aa)) continue;
+      const k=r*NC+rec.off+p-1, st=IRMA_ST[f[5]];
+      if(!st) continue;
+      ST[k]=st; resid++;
+      const a=AAIDX.get(f[4]);
+      AA[k]=a===undefined?255:a;
+      const d=+f[6];
+      DP[k]=f[6]===''||!isFinite(d)?-1:d;
+    }
+    irmaAA=AA; irmaSt=ST; irmaDep=DP; irmaFrame=frame;
+    irmaState=frames?'ok':'empty'; irmaBusy=null;
+    irmaStats={frames, residues:resid, unmatched,
+               ms:Math.round(performance.now()-t0)};
+  })();
+  return irmaBusy;
+}
+/* One IRMA cell, fully resolved — used by the tooltip AND the panel, so the two
+   can never disagree about what is under the pointer. colProd, not a scan over
+   products: it is the same lookup refAt uses, and the draw loop already proved
+   the scan is what a per-cell path cannot afford. */
+function irmaCellAt(row,col){
+  if(!irmaSt||!colProd) return null;
+  const pi=colProd[col]; if(pi===undefined||pi<0) return null;
+  const pr=products[pi], k=row*NC+col;
+  const a=irmaAA[k], d=irmaDep[k];
+  const fr=irmaFrame&&irmaFrame.get(row+'|'+pr.product);
+  return {sample:names[row], product:pr.product, pos:col-pr.off+1,
+          refAA:refAt(col)||'?', aa:a===255?null:AAS[a],
+          st:irmaSt[k], depth:d<0?null:d, frame:fr?fr.status:null};
+}
+/* ---- IRMA as CORROBORATION, not a fourth caller ----------------------------
+
+   LoFreq, iVar and GATK4 all consume the same BWA BAM, so their agreement
+   carries no information about alignment error. IRMA's does — it is the only
+   independent alignment in the pipeline. That is worth having, and worth having
+   as an ANNOTATION rather than a caller checkbox: IRMA speaks to 3.5% of caller
+   positions, so a toggle beside LoFreq/iVar/GATK4 would hide 96.5% of calls and
+   read as "IRMA disagrees" when it means "IRMA is silent". The one control it
+   gets is POSITIVE — "IRMA-corroborated only" — which the reader opts into.
+
+   Measured on the swine run, after reconciling frames: of 772 IRMA minority
+   calls, 766 sit where the callers already call and ALL 766 name the same
+   alternative allele, 757 within 5 percentage points. Six are IRMA-only.
+
+   THE PIPELINE DOES THE RECONCILIATION, and it has to. IRMA states its minority
+   allele against ITS OWN consensus. On this run 39 of the 772 have the minority
+   allele EQUAL to the reference base — a partial reversion, where the
+   non-reference allele is IRMA's CONSENSUS. Reading `minor_allele` as "the alt"
+   gets those exactly backwards, and that is not hypothetical: it yields 727
+   matches instead of 766, which is precisely how this item's first measurement
+   came out short. */
+let irmaVar=null;      // `sample|locus|pos` -> reconciled record
+let irmaVarState='unknown', irmaVarBusy=null, irmaVarStats=null;
+
+function ensureIrmaVar(){
+  if(irmaVar) return Promise.resolve();
+  if(irmaVarBusy) return irmaVarBusy;
+  const f=findFile('variant_analysis/irma/irma_variants.tsv','irma_variants.tsv');
+  if(!f){ irmaVarState=findAll(/irma/i).length?'nofile':'norun'; return Promise.resolve(); }
+  irmaVarBusy=(async()=>{
+    const t0=performance.now();
+    const m=new Map(); let rev=0;
+    for(const line of (await f.text()).split('\n').slice(1)){
+      if(!line) continue;
+      const c=line.split('\t'); if(c.length<12) continue;
+      // cons_is_ref / minor_is_ref are the pipeline STATING the frame rather
+      // than leaving it to be re-derived here. When the minority allele is the
+      // reference, the non-reference allele is the consensus one.
+      const minorIsRef = c[11]==='yes';
+      if(minorIsRef) rev++;
+      /* shortLocus, because V.seg carries the SHORT name — `HA`, not
+         `A_HA_H3` — and the pipeline writes the full locus. The eight loci stay
+         distinct under it, so this collapses nothing. Keying on the raw name
+         silently matched zero of 772 rows, which looks exactly like "IRMA
+         corroborates nothing" and is why the join is asserted in the tests. */
+      m.set(c[0]+'|'+shortLocus(c[1])+'|'+c[2], {
+        alt: minorIsRef ? c[4] : c[6],
+        af : +(minorIsRef ? c[5] : c[7]),
+        ref:c[3], cons:c[4], consFreq:+c[5], minor:c[6], minorFreq:+c[7],
+        count:+c[8], total:+c[9], minorIsRef});
+    }
+    irmaVar=m; irmaVarState=m.size?'ok':'empty'; irmaVarBusy=null;
+    irmaVarStats={rows:m.size, reversions:rev, ms:Math.round(performance.now()-t0)};
+  })();
+  return irmaVarBusy;
+}
+
+/* What IRMA says about ONE caller call. Four answers, and the distinction
+   between the middle two is the whole point:
+
+     corroborated  IRMA sees this alternative allele here
+     other         IRMA calls a DIFFERENT allele at this position
+     silent        IRMA had the coverage to call it and did not
+     unknown       IRMA COULD NOT have called it — below its own MIN_TCC=100, or
+                   ambiguous, or the codon was never placed — so its silence is
+                   not evidence of anything
+
+   `unknown` is why this needs the consensus grid as well as the variant table.
+   IRMA's MIN_TCC=100 switches its variant calling off in exactly the thin
+   regions where its coverage advantage over BWA would have mattered, so
+   collapsing `unknown` into `silent` would turn IRMA's conservatism into an
+   apparent disagreement — the same absence-of-evidence trap as `no FIT`. */
+function irmaVerdict(i){
+  if(!irmaVar) return {state:'noload'};
+  const r=irmaVar.get(names[V.row[i]]+'|'+V.seg[i]+'|'+V.pos[i]);
+  const alt=(V.altnt[i]||'').toUpperCase();
+  if(r) return {state: r.alt===alt ? 'corroborated' : 'other', rec:r};
+  if(!irmaSt) return {state:'silent_unqualified'};
+  const s=irmaSt[V.row[i]*NC+V.col[i]];
+  // Only these two mean IRMA had >= the floor at that codon, which is the
+  // condition under which its variant caller was actually able to speak.
+  if(s===0||s===IRMA_ST.change) return {state:'silent'};
+  return {state:'unknown', st:s};
+}
+
+/* Keeps the consensus controls telling the truth about what is being PAINTED,
+   which is not always what is selected — the IRMA source is inert in the
+   nucleotides alphabet, and saying so is the difference between a disabled
+   control and a broken one. Called on view change, on source change, and again
+   when the load resolves, since the note cannot report frame counts before
+   there are any. */
+function syncConsControls(){
+  const sel=document.getElementById('conssrc'), ct=document.getElementById('cthin'),
+        note=document.getElementById('consnote');
+  if(!sel) return;
+  /* No nucleotides case to handle here. deriveViewMode maps the nucleotides
+     ALPHABET to viewMode 'nucleotides', a different mode — so viewMode
+     'consensus' always implies amino acids, and this whole section is hidden
+     the moment the alphabet changes. irmaOn() still carries the viewer guard,
+     but as a belt on that invariant rather than a case that arises. */
+  sel.value = consSrc;
+  // Thin marking only means something against IRMA's coverage. The derived
+  // consensus has no depth statement of its own to be thin against.
+  if(ct){ ct.disabled = consSrc!=='irma'; ct.checked = markThin; }
+  /* A run loaded while the source was already IRMA clears the grids, so the
+     load has to be re-kicked from here or the view falls back to derived
+     without ever saying why. */
+  if(consSrc==='irma'&&!irmaSt&&!irmaBusy&&irmaState==='unknown')
+    ensureIRMA().then(()=>{ syncConsControls(); schedule(); });
+  if(!note) return;
+  note.innerHTML =
+    consSrc!=='irma'
+      ? 'Derived here: every call above 50% painted onto the reference, filters ignored. '+
+        'IRMA published its own consensus — the one FluMut screens.'
+    : irmaState==='norun'  ? 'No IRMA output in this run.'
+    : irmaState==='nofile'
+      ? '<span class="warn">No position map.</span> <code>variant_analysis/irma/</code> is '+
+        'missing, so there is nothing to place IRMA\'s consensus with. Run '+
+        'IRMA_POSITION_MAP — coordinates are never guessed here.'
+    : irmaState==='unknown' || irmaBusy ? 'Reading IRMA\'s consensus…'
+    : irmaStats
+      ? `${irmaStats.frames.toLocaleString()} sample × product frames · `+
+        `${irmaStats.residues.toLocaleString()} stated residues. Grey means IRMA placed `+
+        `nothing there — not agreement. Depth is IRMA's own coverage, not the BWA pileup.`
+      : '';
+}
 
 /* ---- read pileup for one expanded sample --------------------------------
    Only rendered when the columns are wide enough to mean anything (a codon
@@ -4430,6 +4805,10 @@ let selVariant=null, selCol=null;
    moved that is the wrong answer. Null in every other mode and below 3 px per
    codon, where the thirds are not separable on screen either. */
 let selNt=null;
+/* The selected IRMA cell, {row,col}, or null. Separate from selVariant because
+   it is NOT a variant — it has no index into V — and every place that clears one
+   must clear the other, or the panel outlives the selection that produced it. */
+let selIrma=null;
 
 // The base under the pointer within codon `c`, 0-2. Clamped, because a click
 // lands on a boundary pixel often enough to matter at low zoom.
@@ -5379,10 +5758,124 @@ function esc(s){ return String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','
 function renderDetail(){
   const el=document.getElementById('detailbody');
   if(!ready){ el.innerHTML='<div class="empty">Open a run to begin.</div>'; return; }
+  // Before selVariant: an IRMA cell has no variant, and falling through would
+  // render the previous selection's panel beside the newly selected cell.
+  if(selIrma){ renderIrma(el,selIrma.row,selIrma.col); return; }
   if(selVariant!==null){ renderVariant(el,selVariant); return; }
   if(selCol!==null){ renderSite(el,selCol); return; }
   el.innerHTML='<div class="empty">Click a cell for variant detail, '+
     'or a ruler position for every sample at that site.</div>';
+}
+
+/* IRMA's statement about one cell.
+
+   An IRMA residue has no call behind it — that is the entire reason this exists
+   rather than reusing renderVariant. Its job is to say what IRMA found, on what
+   coverage, in which frame, and then to JOIN BACK to the variant table so the
+   reader can see whether the callers have anything at the same codon. Without
+   that join a painted IRMA cell would open nothing, which is the dead-click
+   class of bug twice fixed on 2026-08-09 arriving by a new route.
+
+   The join is against consVar, not `keep`: consVar is the unfiltered consensus
+   winner, and asking "do the callers have a consensus call here" must not be
+   answered through whatever filters happen to be set. Same rule as ntCellAt. */
+function renderIrma(el,row,col){
+  const c=irmaCellAt(row,col);
+  if(!c){ el.innerHTML='<div class="empty">No IRMA data for this cell.</div>'; return; }
+  const chg=irmaIsChange(c.st);
+  const k=row*NC+col;
+  const vi=consVar?consVar[k]:-1;
+  const call = vi>=0 ? {freq:V.freq[vi], depth:V.depth[vi],
+                        aa:V.alt[vi]===255?'?':AAS[V.alt[vi]]} : null;
+
+  let title, cls, body;
+  if(c.st===IRMA_ST.uncovered||c.st===255){
+    title='IRMA placed nothing here'; cls='bad';
+    body = c.frame==='absent'
+      ? `The <b>${esc(c.product)}</b> segment is absent from this sample's IRMA assembly, `+
+        `so there is no consensus to read. This is not agreement with the reference — `+
+        `it is no statement at all.`
+      : c.frame==='aligned'
+        ? `This sample's contig is TRUNCATED and did not reach this codon. The frame was `+
+          `established by alignment, so the codons it does reach are correctly placed; `+
+          `this one simply has no contig under it.`
+        : `The pipeline did not state this codon. Either the segment is missing or the `+
+          `position map was written before this product existed.`;
+  } else if(c.st===IRMA_ST.ambiguous){
+    title='IRMA could not call a base'; cls='warn';
+    body=`IRMA wrote N in the contig here. It had reads and still could not resolve the `+
+         `base, which is a third answer — neither a change nor agreement with the reference.`;
+  } else if(chg){
+    title = c.st===IRMA_ST.change ? 'IRMA calls a change'
+          : c.st===IRMA_ST.change_thin ? 'IRMA calls a change, on thin coverage'
+          : 'IRMA calls a change, depth unknown';
+    cls = c.st===IRMA_ST.change ? 'warn' : 'bad';
+    body = c.st===IRMA_ST.change
+      ? `At or above the run's depth floor, measured against IRMA's OWN coverage — not `+
+        `the BWA pileup, which is thinner at segment termini and is why the callers can `+
+        `be silent where IRMA is not.`
+      : c.st===IRMA_ST.change_thin
+        ? `Below the run's depth floor in IRMA's own coverage. Read it as a lead, not a `+
+          `result — the floor exists because low-depth consensus calls fake fixations.`
+        : `No IRMA coverage table was available, so the depth floor could not be applied. `+
+          `An unknown depth is not a passing one.`;
+  } else if(c.st===IRMA_ST.thin){
+    title='Matches the reference, on thin coverage'; cls='warn';
+    body=`IRMA agrees with the reference here, but below the run's depth floor in its own `+
+         `coverage. 18% of codons in this run are in this state, which is why they are not `+
+         `marked in the grid — the depth is reported here instead.`;
+  } else {
+    title='IRMA agrees with the reference'; cls='good';
+    body=`At or above the depth floor in IRMA's own coverage.`;
+  }
+
+  el.innerHTML =
+    `<div class="sub">${esc(c.sample)} · ${esc(c.product)} · codon ${c.pos}</div>`+
+    `<dl class="dl">
+       <dt>reference</dt><dd>${esc(c.refAA)}</dd>
+       <dt>IRMA</dt><dd>${chg?`<b>${esc(c.aa||'?')}</b>`
+         : c.st===IRMA_ST.ambiguous?'<span class="dim">N</span>'
+         : c.st===IRMA_ST.uncovered||c.st===255?'<span class="dim">—</span>'
+         : esc(c.refAA)}</dd>
+       <dt>IRMA depth</dt><dd class="${c.st===IRMA_ST.change_thin||c.st===IRMA_ST.thin?'warn':''}">${
+         c.depth!==null ? c.depth.toLocaleString()
+         /* Status 0 carries no row in the residue table, so the exact depth is
+            not published — but the ABSENCE of a row is itself the statement
+            that it cleared the floor. "Not known" would understate what is
+            known, which is the mirror of the error this view guards against. */
+         : c.st===0 ? '<span class="dim">at or above the floor</span>'
+         : '<span class="dim">not known</span>'}</dd>
+       <dt>frame</dt><dd>${esc(c.frame||'not stated')}${
+         c.frame==='aligned'?' <span class="dim">(truncated — placed by alignment)</span>':
+         c.frame==='identity'?' <span class="dim">(contig colinear)</span>':''}</dd>
+     </dl>`+
+    `<div class="verdict ${cls}"><b>${title}</b>${body}</div>`+
+    /* The join back to the table. Both directions are informative: a call the
+       callers ALSO have corroborates IRMA, and a change with nothing behind it
+       is the interesting case — 24 such residues on this run, every one with
+       reads but below the floor in the BWA alignment. */
+    `<dl class="dl" style="margin-top:10px">
+       <dt>callers</dt><dd>${call
+         ? `${esc(call.aa)} at ${(call.freq*100).toFixed(1)}% · depth ${call.depth.toLocaleString()}`
+         : '<span class="dim">no consensus call at this codon</span>'}</dd>
+     </dl>`+
+    (call
+      ? `<div class="note">The callers have a consensus call here${
+          chg && call.aa===c.aa ? ' and it is the SAME residue IRMA carries.'
+          : chg ? ' but it names a different residue — worth opening.' : '.'}
+         <button id="irma-open" style="margin-top:6px">Open the variant</button></div>`
+      : chg
+        ? `<div class="note">No caller has a consensus call at this codon. On this run every
+           such residue had reads but sat below the depth floor in the BWA alignment, while
+           IRMA's own coverage was adequate — the two alignments disagree about how much
+           evidence is here, not about what it says.</div>`
+        : '');
+
+  if(call){
+    const b=document.getElementById('irma-open');
+    if(b) b.onclick=()=>{ selIrma=null; selVariant=vi; selCol=col; selSample=row;
+                          renderDetail(); schedule(); };
+  }
 }
 
 async function renderVariant(el,i){
@@ -5403,6 +5896,18 @@ async function renderVariant(el,i){
   // the assessment reporting absence of evidence as evidence of absence.
   if(V.method[i]===M_IVAR) await loadIvar(names[V.row[i]]);
   if(V.method[i]===M_GATK) await loadGATK(names[V.row[i]]);
+  /* Same rule again, and for the same reason. irmaVerdict reads BOTH tables
+     synchronously while the HTML is composed, so both have to be resolved
+     first — and here the failure mode is worse than a contradiction: an
+     unawaited consensus table makes every call report "silent", turning
+     IRMA's not-yet-loaded into IRMA's considered opinion.
+
+     The consensus table is the expensive one (~0.5s once, then cached). It is
+     awaited rather than skipped because it is the ONLY thing that separates
+     "IRMA had the depth and called nothing" from "IRMA could not have called
+     this", and reporting the second as the first is the whole trap. */
+  await ensureIrmaVar();
+  if(irmaVar) await ensureIRMA();
   /* Awaited for the same reason the others are: markerSupport() reads the cache
      synchronously while the marker list is composed, and an unawaited load would
      report every marker as unmeasured on the first click and supported on the
@@ -5551,6 +6056,45 @@ async function renderVariant(el,i){
                `filters on purpose — LoFreq requires proper pairs, iVar counts `+
                `anomalous ones — and they diverge most where reads are thin.</div>`:'')+
           `</dd>`;
+      })()}
+      ${/* IRMA corroboration. Deliberately the row AFTER caller agreement,
+            because it answers a different question: the three callers share a
+            BAM, so their agreement says nothing about alignment error, and this
+            is the only line on the panel that does. */''}
+      ${(()=>{
+        const v=irmaVerdict(i), pct=x=>(x*100).toFixed(2)+'%';
+        if(v.state==='noload')
+          return `<dt>IRMA</dt><dd class="dim">${
+            irmaVarState==='norun' ? 'no IRMA output in this run'
+            : irmaVarState==='nofile' ? 'no irma_variants.tsv — run IRMA_POSITION_MAP'
+            : 'not read yet'}</dd>`;
+        if(v.state==='corroborated'){
+          const d=Math.abs(v.rec.af-V.freq[i])*100, far=d>5;
+          return `<dt>IRMA</dt><dd><b>corroborated</b> at ${pct(v.rec.af)}`+
+            ` · <span class="${far?'warn':''}">${d.toFixed(2)} points apart</span>`+
+            (v.rec.minorIsRef
+              ? `<div class="note" style="margin:4px 0 0">IRMA's consensus here is
+                 <b>${esc(v.rec.cons)}</b>, not the reference <b>${esc(v.rec.ref)}</b>, so it
+                 reports the REFERENCE base as its minority allele. The frequency above is
+                 IRMA's consensus frequency — the two are stated in different frames and the
+                 pipeline reconciled them.</div>`
+              : '')+`</dd>`;
+        }
+        if(v.state==='other')
+          return `<dt>IRMA</dt><dd class="warn">calls a different allele here — `+
+                 `<b>${esc(v.rec.alt)}</b> at ${pct(v.rec.af)}, not ${esc(V.altnt[i])}</dd>`;
+        if(v.state==='silent')
+          return `<dt>IRMA</dt><dd class="dim">silent — it had at least the depth floor `+
+                 `at this codon and called nothing</dd>`;
+        if(v.state==='unknown')
+          return `<dt>IRMA</dt><dd class="dim">cannot say — ${
+            v.st===IRMA_ST.uncovered||v.st===255 ? 'this codon has no placement in its contig'
+            : v.st===IRMA_ST.ambiguous ? 'IRMA wrote N here'
+            : 'below the depth floor in IRMA\'s own coverage, where its MIN_TCC gate '+
+              'switches variant calling off'}<div class="note" style="margin:4px 0 0">Not the `+
+              `same as silence. IRMA could not have called this one either way.</div></dd>`;
+        return `<dt>IRMA</dt><dd class="dim">silent here <span class="dim">`+
+               `(coverage not checked — the consensus table is not loaded)</span></dd>`;
       })()}
       <dt>nt position</dt><dd>${V.pos[i]} (${esc(V.refnt[i])}→${esc(V.altnt[i])})</dd>
       <dt>codon</dt><dd>${esc(V.refcod[i]||'?')} → ${esc(V.altcod[i]||'?')}</dd>
@@ -5853,6 +6397,33 @@ function cellAt(cx,cy){
 
      Exactly the split ntCellAt exists to fix, in the other viewer. Match what
      was painted, per the rule in renderSite. */
+  /* IRMA source. Same rule as everywhere else in this function — hit-test what
+     was PAINTED — but an IRMA residue has no call behind it, so this returns
+     {irma:{row,col}} rather than {i}. Every consumer of hitAt branches on which
+     it got; none of them may assume `.i` exists.
+
+     A painted mark is a change or an ambiguous cell, and those get the 1 px
+     tolerance the derived grid gets. */
+  if(viewMode==='consensus'&&irmaOn()){
+    const ce=colAt(cx), sme=rowOrder[rc];
+    const painted=s=>irmaIsChange(s)||s===IRMA_ST.ambiguous;
+    if(sme!==undefined&&ce>=0&&ce<NC&&painted(irmaSt[sme*NC+ce]))
+      return {irma:{row:sme, col:ce}};                 // the exact cell wins
+    for(let dr=r0;dr<=r1;dr++){                        // then the 1 px tolerance
+      const sm=rowOrder[dr]; if(sm===undefined) continue;
+      const base=sm*NC;
+      for(let c=c0;c<=c1;c++)
+        if(painted(irmaSt[base+c])) return {irma:{row:sm, col:c}};
+    }
+    /* Nothing painted under the pointer, but the EXACT cell still answers — with
+       no tolerance, so it can never steal a click from a mark next door.
+       Without this the thin residues would be unreachable: they are deliberately
+       not painted (119,731 of them, 18% of the grid), and "panel only" has to
+       mean the panel can actually be opened on one. It also makes a gap
+       explain itself instead of just looking empty. */
+    if(sme!==undefined&&ce>=0&&ce<NC) return {irma:{row:sme, col:ce}};
+    return null;
+  }
   if(viewMode==='consensus'&&consSource()){
     const SRC=consSource();                            // the grid drawConsensus painted
     const ce=colAt(cx), sme=rowOrder[rc];
@@ -5917,6 +6488,24 @@ cv.addEventListener('mousemove',e=>{
   const rect=cv.getBoundingClientRect();
   const hit=hitAt(e.clientX-rect.left,e.clientY-rect.top);
   if(!hit){ tip.style.display='none'; return; }
+  // An IRMA cell has no call behind it, so nothing below may touch V.
+  if(hit.irma){
+    const c=irmaCellAt(hit.irma.row,hit.irma.col);
+    if(!c){ tip.style.display='none'; return; }
+    const chg=irmaIsChange(c.st);
+    tip.innerHTML=`<b>${esc(c.sample)}</b> · ${esc(c.product)} `+
+      `<b>${esc(c.refAA)}${c.pos}${chg?esc(c.aa||'?'):''}</b><br>`+
+      `<span class="k">IRMA</span> ${esc(c.st===0?'matches reference'
+        : c.st===255?'not stated'+(c.frame?' ('+c.frame+')':'')
+        : IRMA_LABEL[c.st]||'?')}`+
+      (c.depth===null?'':`  <span class="k">depth</span> ${c.depth.toLocaleString()}`);
+    tip.style.display='block';
+    let ix=e.clientX-rect.left+14, iy=e.clientY-rect.top+14;
+    if(ix+tip.offsetWidth>cssW-8) ix=e.clientX-rect.left-tip.offsetWidth-14;
+    if(iy+tip.offsetHeight>cssH-8) iy=e.clientY-rect.top-tip.offsetHeight-14;
+    tip.style.left=ix+'px'; tip.style.top=iy+'px';
+    return;
+  }
   const i=hit.i, p=PROD.get(V.prod[i]);
   const refAA=V.ref[i]===255?'?':AAS[V.ref[i]], altAA=V.alt[i]===255?'?':AAS[V.alt[i]];
   tip.innerHTML=`<b>${esc(names[V.row[i]])}</b> · ${esc(p?p.product:'?')} `+
@@ -6071,7 +6660,7 @@ window.addEventListener('mouseup',e=>{
       if(cy<topH()){                     // track / ruler / reference -> site detail
         const c=Math.floor(scrollCol+(cx-NAMES_W)/cw);
         if(c>=0&&c<NC){
-          selCol=c; selVariant=null;
+          selCol=c; selVariant=null; selIrma=null;
           // The reference row draws bases in this view, so a click on it is a
           // click on a base — take the one under the pointer.
           selNt = viewMode==='nucleotides' ? ntUnder(cx,c) : null;
@@ -6079,7 +6668,16 @@ window.addEventListener('mouseup',e=>{
         }
       } else {
         const hit=hitAt(cx,cy);
-        if(hit){
+        // An IRMA cell carries no index into V, so it must be taken before
+        // anything reads hit.i.
+        if(hit&&hit.irma){
+          selIrma={row:hit.irma.row, col:hit.irma.col};
+          selVariant=null; selNt=null;
+          selCol=hit.irma.col; selSample=hit.irma.row;
+          renderDetail(); schedule();
+        }
+        else if(hit){
+          selIrma=null;
           selVariant=hit.i; selCol=V.col[hit.i]; selSample=V.row[hit.i];
           if(viewMode==='nucleotides'){
             const k=changedNt(hit.i);
@@ -6087,12 +6685,24 @@ window.addEventListener('mouseup',e=>{
           } else selNt=null;
           renderDetail(); schedule();
         }
-        else { selVariant=null; selCol=null; selNt=null; renderDetail(); schedule(); }
+        else { selIrma=null; selVariant=null; selCol=null; selNt=null; renderDetail(); schedule(); }
       }
     }
   }
   drag=null; sizing=null; downAt=null;
 });
+/* Consensus source. The load is awaited before the redraw so the first frame in
+   IRMA mode is IRMA's grid rather than a blank one that fills in a tick later —
+   the two look identical for that tick, and "IRMA has nothing here" is exactly
+   the reading this view must never invite. */
+document.getElementById('conssrc').onchange=async e=>{
+  consSrc=e.target.value;
+  selIrma=null;                       // a cell selected in one source is not a cell in the other
+  syncConsControls(); schedule();     // show "Reading…" before the await, not after
+  if(consSrc==='irma') await ensureIRMA();
+  syncConsControls(); renderDetail(); schedule();
+};
+document.getElementById('cthin').onchange=e=>{ markThin=e.target.checked; schedule(); };
 document.getElementById('zoomin').onclick=()=>{cw=Math.min(40,cw*1.4);userZoomed=true;schedule();};
 document.getElementById('zoomout').onclick=()=>{cw=Math.max(0.04,cw/1.4);userZoomed=true;schedule();};
 document.getElementById('fit').onclick=fit;
@@ -6175,6 +6785,22 @@ function placeModeSwitch(){
       fs.style.opacity = off ? .5 : '';
       if(fn) fn.hidden = off;      // its count describes the filtered grid, not this one
       if(cn) cn.hidden = !off;
+    }
+  }
+  /* The consensus SOURCE switch. Only the consensus view has a consensus to
+     choose a source for, so the section is hidden elsewhere rather than greyed —
+     it is not a disabled control there, it is an inapplicable one.
+
+     Within the view, the IRMA option greys in the nucleotides alphabet: the
+     pipeline table states a RESIDUE per codon, so there is nothing to paint per
+     base. Greying rather than silently falling back matters here — irmaOn()
+     returns false in that alphabet, and without the note a reader would have
+     "IRMA" selected while looking at the derived grid. */
+  {
+    const cs=document.getElementById('conssec');
+    if(cs){
+      cs.hidden = viewMode!=='consensus';
+      if(!cs.hidden) syncConsControls();
     }
   }
   /* The variant-view switch stays VISIBLE in selection and goes disabled
