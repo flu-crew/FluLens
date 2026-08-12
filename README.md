@@ -1,7 +1,7 @@
 ![FluLens — influenza variant visualizer](docs/img/banner.png)
 
-A reviewer for influenza variant calls — **samples × codons**, one cell per call,
-coloured by allele frequency.
+FluLens is a visualizer for inspecting and filtering influenza variant calls. **samples × codons**, one cell per call and
+coloured by allele frequency or viewable as a consensus.
 
 It reads the output of [Flumina](https://github.com/flu-crew/Flumina) directly and
 answers two questions faster than a spreadsheet does: *is this variant real?* and
