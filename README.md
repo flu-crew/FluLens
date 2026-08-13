@@ -1,14 +1,14 @@
 ![FluLens — influenza variant visualizer](docs/img/banner.png)
 
-A reviewer for influenza variant calls — **samples × codons**, one cell per call,
-coloured by allele frequency.
+FluLens is a visualizer for inspecting and filtering influenza variant calls. **samples × codons**, one cell per call and
+coloured by allele frequency or viewable as a consensus.
 
 It reads the output of [Flumina](https://github.com/flu-crew/Flumina) directly and
 answers two questions faster than a spreadsheet does: *is this variant real?* and
 *is this sample worth keeping?*
 
 **[▶ Try it in your browser](https://flu-crew.github.io/FluLens/?run=example_run)** —
-no install, loaded with example data.
+no installation needed and loaded with example data.
 
 ![FluLens showing a variant's assessment panel](docs/img/variant-panel.png)
 
@@ -16,13 +16,13 @@ no install, loaded with example data.
 
 ## Running it
 
-Three ways. They are the same application; pick whichever suits you.
+Three ways. They are the same application; pick whichever you like best!
 
 | | Use when |
 |---|---|
 | [1. In a browser](#1-in-a-browser) | Simplest. Nothing to install, works on any OS |
 | [2. As a single file](#2-as-a-single-file) | You want it offline, or on a machine with no internet |
-| [3. As a desktop app](#3-as-a-desktop-app) | macOS, and you want it to remember your last run |
+| [3. As a desktop app](#3-as-a-desktop-app) | macOS, and you want it to remember your last run [coming soon]|
 
 ### 1. In a browser
 
@@ -43,7 +43,7 @@ open flulens.html        # macOS
 xdg-open flulens.html    # Linux
 ```
 
-### 3. As a desktop app
+### 3. As a desktop app [coming soon]
 
 Download `FluLens_<version>_universal.dmg` from the
 [latest release](https://github.com/flu-crew/FluLens/releases/latest), open it and
@@ -64,12 +64,12 @@ the better path on both.
 ## Try it with the example dataset
 
 You do not need a pipeline run to see what FluLens does. `example_run/` is a small
-**synthetic** Flumina output — twelve samples, 1,378 calls, all twelve gene
-products, 476 KB.
+**synthetic** Flumina output: twelve samples, 1,378 calls, all twelve gene
+products.
 
 **[▶ Open it live, nothing to download](https://flu-crew.github.io/FluLens/?run=example_run)**
 
-To load it locally instead — which is also the way to check that the desktop app
+To load it locally instead, which is also the way to check that the desktop app
 and the folder picker work before you point them at real data:
 
 | Get it | How |
@@ -83,22 +83,15 @@ git clone https://github.com/flu-crew/FluLens.git
 # then in FluLens: Open run folder… -> FluLens/example_run
 ```
 
-**Nothing in it is a real observation** — there is no animal called `A1`, and no
-variant listed was measured in anything. Do not cite it or use it to sanity-check
-a result. What *is* real is the scaffolding: the reference, the GTF and all the
-product and codon annotation are produced by Flumina's own code, so the example
-cannot drift out of step with the pipeline. Full details in
-[`example_run/README.md`](example_run/README.md).
-
-It is deliberately built so the controls have something to act on — a library that
+It is deliberately built so the controls have something to act on: a library that
 fails QC, two segments that never assembled, GATK4 genotype calls with no LoFreq
 counterpart, and skewed strand balance on a fraction of the calls.
 
 ---
 
-## What to point it at
+## What to load into FluLens
 
-A Flumina output directory — the one containing `variant_analysis/`. Everything
+A Flumina output directory: the one containing `variant_analysis/`. Everything
 except the first file is optional, and FluLens says in the sidebar which of them
 it found:
 
@@ -116,7 +109,7 @@ it found:
 
 A **metadata CSV** can be loaded separately when the run was configured without
 one. The sidebar reports how many samples the join actually matched, which is the
-number worth reading — a join that silently matched half your samples looks
+number worth reading: a join that silently matched half your samples looks
 identical to one that matched all of them.
 
 If you have no run of your own to hand, the
@@ -210,7 +203,7 @@ that could be saved and run offline with no change in behaviour.
 
 ## Building from source
 
-The browser version needs no build — `prototypes/flulens.html` *is* the
+The browser version needs no build: `prototypes/flulens.html` *is* the
 application. Edit it and reload.
 
 The desktop app is a [Tauri](https://tauri.app) shell around that same file:
