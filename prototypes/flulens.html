@@ -82,6 +82,11 @@
   button:disabled{opacity:.45;cursor:default}
   button.on{border-color:var(--accent);color:#dce6ff}
   .stat{font:11px ui-monospace,monospace;color:var(--muted);white-space:nowrap}
+  /* In the sidebar the run summary has a narrow column, so its chip and stat
+     line wrap and fill the width instead of the header's nowrap + ellipsis. */
+  #runsummary{margin-top:8px;display:flex;flex-direction:column;gap:5px}
+  #runsummary .chip{max-width:none;white-space:normal;overflow:visible;text-overflow:clip}
+  #runsummary .stat{white-space:normal}
   .stat b{color:var(--text);font-weight:600}
   .stat .good{color:var(--good)}
   select{font:12px system-ui;color:var(--text);background:var(--panel2);
@@ -384,15 +389,11 @@
       <circle cx="11.35" cy="5.68"  r="1.05" fill="var(--logo-knob)"/>
       <circle cx="14.25" cy="7.35"  r="1.05" fill="var(--logo-knob)"/>
     </svg>FluLens <small>influenza variant visualizer</small></div>
-  <!-- Empty until there is something to report. It used to open with "open a
-       Flumina results folder", which restated the button directly beneath it;
-       once a run loads this becomes the run's own stat line. -->
-  <!-- The two hgroups are flex:1 1 0, so they take EQUAL width whatever is in
-       them. That is what pins the selector: with plain springs the stat text
-       ("1,035 calls" vs "137 consensus differences") changed width on every mode
-       change and shoved the buttons sideways, so the control moved out from
-       under the cursor that had just clicked it. -->
-  <div class="hgroup"><span class="chip" id="chip" hidden></span></div>
+  <!-- The two hgroups are empty flex:1 1 0 springs. They stay EQUAL width at any
+       window size, which centres the viewer selector and stops it sliding out
+       from under the cursor. The run summary (dimensions, calls) and the
+       per-view count moved to the sidebar, under the Open-run button. -->
+  <div class="hgroup"></div>
   <!-- The mode is the single most consequential control in the app — it decides
        what every cell MEANS — and it spent its life as 9px text tucked beside
        the zoom buttons. Centred, labelled, and given real hit targets. -->
@@ -418,7 +419,7 @@
       ><button data-vv="consensus">consensus</button
       ><button data-vv="reads">read pile-up</button></div>
   </div>
-  <div class="hgroup right"><div class="stat" id="stats">—</div></div>
+  <div class="hgroup right"></div>
   <div class="tools">
     <!-- the ramp selector now sits beside the legend it controls, in the sidebar -->
     <button id="export" title="Export what is currently on screen">export</button>
@@ -435,6 +436,13 @@
     <div class="sec">
       <div class="rowbtns">
         <button id="pick">📁 Open run folder…</button>
+      </div>
+      <!-- Run summary, moved out of the header. The chip is the run's fixed
+           dimensions (samples, codons, products, calls); the stat line is the
+           per-view count and updates as the view and filters change. -->
+      <div id="runsummary">
+        <div class="chip" id="chip" hidden></div>
+        <div class="stat" id="stats"></div>
       </div>
       <div class="note" id="found" style="margin-top:8px">Point at a Flumina output
 directory — the one containing
@@ -584,13 +592,13 @@ the changed base's colour.</div>
           <option value="hydro">hydrophobicity</option>
         </select></div>
       <div class="fld"><span>outline</span>
-        <!-- `halo` is feathered, the other two are strokes. Listed second so the
-             order runs none, softest, then the two hard outlines. The `selected`
-             attribute must track the aaHalo default — a stored preference still
-             wins over both. -->
+        <!-- `halo` is feathered, the other two are strokes. The order runs
+             none, halo, then the two hard outlines. The `selected` attribute
+             must track the aaHalo default — a stored preference still wins over
+             both. -->
         <select id="aahalo" style="flex:1;min-width:0">
-          <option value="none">none</option>
-          <option value="halo" selected>halo</option>
+          <option value="none" selected>none</option>
+          <option value="halo">halo</option>
           <option value="thin">thin outline</option>
           <option value="medium">medium outline</option>
         </select></div>
@@ -792,8 +800,8 @@ click the ✓/✕ to override by hand</div>
 
   <aside id="detail">
     <div class="sec" id="detailbody">
-      <div class="empty">Open a run, then click a cell for variant detail
-      or a ruler position for every sample at that site.</div>
+      <div class="empty">Open a run. Then click a cell to see variant detail,
+      or click a ruler position to see every sample at that site.</div>
     </div>
   </aside>
 </div>
@@ -816,6 +824,26 @@ click the ✓/✕ to override by hand</div>
        rows past the end of M1 / NS1 are counted and reported rather than
        plotted (their amino-acid annotation was computed in the wrong frame)
    ========================================================================= */
+
+/* Tab icon: the lens-and-virus mark, the same geometry as the header logo but
+   with fixed colours (not the theme vars, which do not resolve in a favicon) so
+   it reads on both a light and a dark browser tab strip. Inlined as a data URI,
+   so the single file still needs no external asset. */
+(function setFavicon(){
+  const knobs=[[15.40,10.50],[14.25,13.65],[11.35,15.32],[8.07,14.75],
+               [5.99,12.11],[5.99,8.89],[8.07,6.25],[11.35,5.68],[14.25,7.35]];
+  const svg=
+    "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none'>"+
+    "<circle cx='10.5' cy='10.5' r='7.5' stroke='#2b8ce6' stroke-width='2'/>"+
+    "<line x1='16' y1='16' x2='21.5' y2='21.5' stroke='#2b8ce6' stroke-width='2.6' stroke-linecap='round'/>"+
+    "<circle cx='10.5' cy='10.5' r='3.4' fill='#7c3aed'/>"+
+    knobs.map(([x,y])=>"<circle cx='"+x+"' cy='"+y+"' r='1.05' fill='#8b5cf6'/>").join("")+
+    "</svg>";
+  const link=document.createElement('link');
+  link.rel='icon'; link.type='image/svg+xml';
+  link.href='data:image/svg+xml,'+encodeURIComponent(svg);
+  document.head.appendChild(link);
+})();
 
 /* ---- influenza gene layout ------------------------------------------------ */
 const SEG_ORDER = ['PB2','PB1','PA','HA','NP','NA','MP','NS'];
@@ -863,7 +891,7 @@ const RAMPS={
 // so the same decisions live here once per theme.
 const THEMES={
   dark:{surface:'#0e1014',pane:'#14171d',trackBg:'#12151b',rule:'#232833',
-        tick:'#2a3140',bound:'#3a4454',boundSec:'#5a4a28',ink:'#aeb7c2',
+        tick:'#2a3140',bound:'#3a4454',boundSec:'#5a4a28',segBound:'#5b6a82',ink:'#aeb7c2',
         dim:'#6b7484',label:'#8b949e',glyphInk:'#0b0e13',refBg:'#1a1f28',
         refInk:'#8b949e',band:'rgba(255,255,255,.022)',bandSec:'rgba(250,178,25,.045)',
         stripe:'rgba(255,255,255,.02)',sel:'rgba(122,162,247,.20)',
@@ -895,7 +923,7 @@ const THEMES={
         readsBg:'#0b0e13',scrollTrack:'rgba(255,255,255,.05)',
         scrollThumb:'rgba(255,255,255,.22)'},
   light:{surface:'#fcfcfb',pane:'#f2f2ef',trackBg:'#eeeeea',rule:'#dcdcd5',
-         tick:'#c8c8c0',bound:'#a8a89e',boundSec:'#c9a86a',ink:'#3a3a36',
+         tick:'#c8c8c0',bound:'#a8a89e',boundSec:'#c9a86a',segBound:'#77776d',ink:'#3a3a36',
          dim:'#8a8a82',label:'#5a5a54',glyphInk:'#fcfcfb',refBg:'#e7e7e2',
          refInk:'#5a5a54',band:'rgba(0,0,0,.028)',bandSec:'rgba(200,140,20,.075)',
          stripe:'rgba(0,0,0,.022)',sel:'rgba(42,120,214,.18)',
@@ -1010,10 +1038,11 @@ let aaScheme='zappo';
    It is not decoration. A residue colour lands on a frequency cell it knows
    nothing about: on the blue ramp, 99 of the 126 residue x bucket pairs come
    out under 3:1 and the worst is 1.01:1 — Zappo's blue R/H/K on mid-blue,
-   reported as "blue letters on a blue background". Feathering is the default
-   because that is the reading it fixes; `none` is still one click away. */
+   reported as "blue letters on a blue background". Feathering fixes that
+   reading; `halo` is one click away for anyone who hits it. The default is
+   `none`, per Carl — the plain letters are what he wants to see first. */
 const HALO={none:{}, halo:{blur:0.16,passes:3}, thin:{stroke:0.055}, medium:{stroke:0.10}};
-let aaHalo='halo';
+let aaHalo='none';
 /* EVERY persisted view preference is declared here, above the UI wiring that
    restores it from localStorage. Declaring one further down and restoring it up
    here has now bitten twice: the read hits the temporal dead zone, and because
@@ -2483,6 +2512,20 @@ async function devBootstrap(root='run'){
     },
     size:async()=>{
       const r=await reach(url,{method:'HEAD',cache:'no-store'});
+      /* A host that transfer-compresses the file reports the COMPRESSED length
+         here, and reading that many bytes truncates the resource. GitHub Pages
+         gzips .bai (and other files it does not think are already compressed),
+         so its Content-Length is ~200 for a 656-byte index — the whole-file
+         read then falls short and the index parse runs off the end. Ranges act
+         on the DECOMPRESSED bytes, so the true length is in a one-byte Range
+         probe's Content-Range. Only pay for it when the file is encoded. */
+      if(r.headers.get('Content-Encoding')){
+        try{
+          const rr=await reach(url,{cache:'no-store',headers:{Range:'bytes=0-0'}});
+          const cr=rr.headers.get('Content-Range');       // "bytes 0-0/656"
+          if(cr){ const t=+cr.split('/')[1]; if(t) return t; }
+        }catch(e){}
+      }
       return +r.headers.get('Content-Length')||0;
     }});
   /* Static hosts serve no directory index — GitHub Pages among them — so the
@@ -4158,9 +4201,13 @@ function drawReads(bx,by,bw,bh,c0,c1){
   for(const pr of products){
     const x0=bx+(pr.off-scrollCol)*cw;
     if(x0<bx||x0>bx+bw) continue;
-    ctx.strokeStyle=pr.primary?TH.bound:TH.boundSec;
+    // Same segBound line as the matrix and the ruler: segment starts strong,
+    // sub-ORF starts quiet, so the boundary reads the same in every view.
+    ctx.strokeStyle=pr.primary?TH.segBound:TH.boundSec;
+    ctx.lineWidth=pr.primary?1.5:1;
     ctx.beginPath(); ctx.moveTo(x0,sy); ctx.lineTo(x0,sy+sh); ctx.stroke();
   }
+  ctx.lineWidth=1;
   // The selected column is drawn at the END of this function, over the reads
   // rather than under them — see the note there.
   clampReadScroll();
@@ -4809,14 +4856,14 @@ function assessDetail(i){
 
   if(c.verdict===ASSESS.ARTEFACT){
     out.reasons.push(`alt reads ${(c.altFrac*100).toFixed(0)}% forward against the `+
-      `reference allele's ${(c.refFrac*100).toFixed(0)}% — classic artefact signature`);
+      `reference allele's ${(c.refFrac*100).toFixed(0)}% — a typical artefact pattern`);
     return out;
   }
   if(c.strand===STRAND_FEW)
     out.reasons.push(`only ${c.alt} read${c.alt===1?'':'s'} support it — too few to judge strand`);
   else if(c.alt<AS_MIN_ALT) out.reasons.push(`${c.alt} supporting reads — thin`);
   if(V.depth[i]<AS_MIN_DEPTH)
-    out.reasons.push(`depth ${V.depth[i].toLocaleString()} is below ${AS_MIN_DEPTH} — low template input fakes fixations`);
+    out.reasons.push(`depth ${V.depth[i].toLocaleString()} is below ${AS_MIN_DEPTH} — low template input makes false fixations`);
   if(V.freq[i]<AS_MIN_FREQ)
     out.reasons.push(`${(V.freq[i]*100).toFixed(2)}% is below the ${AS_MIN_FREQ*100}% caller floor`);
   if(c.strand===STRAND_WARN)
@@ -6324,6 +6371,20 @@ function draw(){
       if(!p.primary){ ctx.fillStyle=TH.bandSec; ctx.fillRect(x0,by,w,bh); }
       else if(i%2){ ctx.fillStyle=TH.band; ctx.fillRect(x0,by,w,bh); }
     });
+    /* A full-height divider at every SEGMENT boundary — the left edge of each
+       primary product — so the eight segments read apart down the whole grid,
+       not just in the ruler. Segment starts only; the sub-ORF split inside a
+       segment stays the quiet warm band above. The same segBound line is drawn
+       in the ruler and the read pile-up, so the boundary sits in one place in
+       every view. Clipped to the body, so a segment scrolled off the left just
+       vanishes rather than sticking to the edge. */
+    ctx.fillStyle=TH.segBound;
+    for(const p of products){
+      if(!p.primary) continue;
+      const x0=bx+(p.off-scrollCol)*cw;
+      if(x0<bx||x0>bx+bw) continue;
+      ctx.fillRect(x0-0.75,by,1.5,bh);
+    }
   }
   if(selCol!==null){
     const x=bx+(selCol-scrollCol)*cw;
@@ -6504,8 +6565,12 @@ function draw(){
     for(const p of products){
       const x0=bx+(p.off-scrollCol)*cw, w=p.aa*cw;
       if(x0+w<bx||x0>bx+bw) continue;
-      ctx.strokeStyle=p.primary?TH.bound:TH.boundSec; ctx.beginPath();
+      // Segment start: the strong segBound line, matching the full-height
+      // divider in the grid below. Sub-ORF start: the quiet boundSec line.
+      ctx.strokeStyle=p.primary?TH.segBound:TH.boundSec;
+      ctx.lineWidth=p.primary?1.5:1; ctx.beginPath();
       ctx.moveTo(x0,0); ctx.lineTo(x0,topH()); ctx.stroke();
+      ctx.lineWidth=1;
       const v0=Math.max(x0,bx), v1=Math.min(x0+w,bx+bw);
       if(v1-v0>28){
         ctx.fillStyle=p.primary?TH.ink:TH.boundSec; ctx.textAlign='left';
@@ -7514,8 +7579,8 @@ function renderIrma(el,row,col){
           `position map was written before this product existed.`;
   } else if(c.st===IRMA_ST.ambiguous){
     title='IRMA could not call a base'; cls='warn';
-    body=`IRMA wrote N in the contig here. It had reads and still could not resolve the `+
-         `base, which is a third answer — neither a change nor agreement with the reference.`;
+    body=`IRMA wrote N in the contig here. It had reads, but it still could not resolve the `+
+         `base. This is a third answer — neither a change nor agreement with the reference.`;
   } else if(chg){
     title = c.st===IRMA_ST.change ? 'IRMA calls a change'
           : c.st===IRMA_ST.change_thin ? 'IRMA calls a change, on thin coverage'
@@ -7523,11 +7588,11 @@ function renderIrma(el,row,col){
     cls = c.st===IRMA_ST.change ? 'warn' : 'bad';
     body = c.st===IRMA_ST.change
       ? `At or above the run's depth floor, measured against IRMA's OWN coverage — not `+
-        `the BWA pileup, which is thinner at segment termini and is why the callers can `+
+        `the BWA pileup. The BWA pileup is thinner at the segment ends, so the callers can `+
         `be silent where IRMA is not.`
       : c.st===IRMA_ST.change_thin
         ? `Below the run's depth floor in IRMA's own coverage. Read it as a lead, not a `+
-          `result — the floor exists because low-depth consensus calls fake fixations.`
+          `result — the floor exists because low-depth consensus calls make false fixations.`
         : `No IRMA coverage table was available, so the depth floor could not be applied. `+
           `An unknown depth is not a passing one.`;
   } else if(c.st===IRMA_ST.thin){

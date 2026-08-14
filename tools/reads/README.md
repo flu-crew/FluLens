@@ -1,12 +1,12 @@
 # Read-level probes
 
-Written 2026-08-13 to settle item 0d — six low-frequency calls IRMA made that
-none of LoFreq, iVar or GATK4 reported. They read a run directory in place and
-print summaries; none of them writes into the run except `depth_band.py`, which
+Written 2026-08-13 to settle item 0d — six low-frequency calls that IRMA made and
+that none of LoFreq, iVar, or GATK4 reported. They read a run directory in place and
+print summaries. None of them writes into the run, except `depth_band.py`, which
 takes an explicit output path.
 
 All of them need `samtools` on `PATH`. `<run_dir>` is a Flumina output
-directory (the one holding `BAM_files/`, `IRMA_results/`, `reference.fa`).
+directory (the one that holds `BAM_files/`, `IRMA_results/`, and `reference.fa`).
 
 | script | question it answers |
 |---|---|
@@ -23,16 +23,16 @@ directory (the one holding `BAM_files/`, `IRMA_results/`, `reference.fa`).
 ## Two things that produce convincing wrong answers
 
 **Read names.** IRMA appends the fastq comment as `_3:N:0:INDEX` (the `3` is
-its marker for a merged pair) and BWA keeps the bare Illumina name. Comparing
-them unnormalised finds 0 of 125 reads and looks like a finding. Every script
-here splits on `_` and takes the first field; Illumina names contain no
+its marker for a merged pair), and BWA keeps the bare Illumina name. If you compare
+them without normalisation, you find 0 of 125 reads, and this looks like a result. Every
+script here splits on `_` and takes the first field. Illumina names contain no
 underscore.
 
 **Negative region starts.** A window built as `pos-400` goes below 1 for a
-position near a segment start, `samtools view` returns nothing, and the empty
-result reads as a clean negative — "BWA does nothing with these reads". It
-briefly produced exactly that for the three calls below position 105. Both
-`clip_audit.py` and `junction_test.py` now clamp to 1.
+position near a segment start. Then `samtools view` returns nothing, and the empty
+result looks like a clean negative — "BWA does nothing with these reads". For a short
+time, it produced exactly that for the three calls below position 105. Now both
+`clip_audit.py` and `junction_test.py` clamp to 1.
 
 ## Reproducing item 0d
 
@@ -56,10 +56,10 @@ python3 depth_band.py "$RUN" "$RUN/depth_profiles/mindepth_blind_band.tsv"
 
 ## Reproducing the LoFreq `-B` measurement
 
-Does disabling BAQ in `lofreq call` recover real variants or manufacture them?
-`baq_support.py` characterises the calls `-B` adds; `baq_baseline.py` compares
-them against the calls LoFreq already makes, which is the only way a support
-rate means anything.
+Does `-B` in `lofreq call` recover real variants, or does it make false ones?
+`baq_support.py` describes the calls that `-B` adds. `baq_baseline.py` compares
+them against the calls LoFreq already makes. This comparison is the only way a support
+rate has meaning.
 
 LoFreq is not installed on the laptop, so the calling runs in the image. The
 run directory is mounted read-only — nothing here writes into it.
@@ -84,16 +84,16 @@ python3 baq_support.py  "$RUN" "$OUT" $(tr '\n' ' ' < "$OUT/samples.txt")
 python3 baq_baseline.py "$RUN" "$OUT" $(tr '\n' ' ' < "$OUT/samples.txt")
 ```
 
-On the 2026-08-09 run, 12 samples: `-B` adds 270 calls (+15.8%) and loses none,
-63% of them past position 200 rather than at the segment starts BAQ is known to
-break, corroborated at the same rate as the baseline, and enriched ~5x for
+On the 2026-08-09 run, 12 samples: `-B` adds 270 calls (+15.8%) and loses none.
+63% of them are past position 200, not at the segment starts where BAQ is known to
+fail. They are corroborated at the same rate as the baseline, and enriched ~5x for
 indel adjacency (4.4% vs 0.9% within 10 bp).
 
-`--entrypoint bash` is required: the image's entrypoint is the Flumina launcher,
-so a bare `docker run ... lofreq` prints the launcher's help instead of running
+`--entrypoint bash` is required: the image's entrypoint is the Flumina launcher.
+So a bare `docker run ... lofreq` prints the launcher's help and does not run
 LoFreq.
 
 **Indel positions come from iVar's TSV, never from the GATK4 indel VCF.** GATK4
-reports 4 indel records across all 143 samples against iVar's 916 across 129 of
-them, because it is a genotype caller and does not see indels below genotype
-frequency. Using it makes BAQ look like it protects against nothing.
+reports 4 indel records across all 143 samples, against iVar's 916 across 129 of
+them, because GATK4 is a genotype caller and does not see indels below genotype
+frequency. If you use it, BAQ looks like it protects against nothing.

@@ -1,14 +1,15 @@
 ![FluLens — influenza variant visualizer](docs/img/banner.png)
 
-FluLens is a visualizer for inspecting and filtering influenza variant calls. **samples × codons**, one cell per call and
-coloured by allele frequency or viewable as a consensus.
+FluLens is a viewer for influenza variant calls. You can inspect and filter them.
+The grid shows **samples × codons**, one cell per call. FluLens colours each cell by
+allele frequency, or shows it as a consensus.
 
-It reads the output of [Flumina](https://github.com/flu-crew/Flumina) directly and
-answers two questions faster than a spreadsheet does: *is this variant real?* and
-*is this sample worth keeping?*
+FluLens reads the output of [Flumina](https://github.com/flu-crew/Flumina). It helps you
+answer two questions more quickly than a spreadsheet: *is this variant real?* and
+*is this sample good enough to keep?*
 
 **[▶ Try it in your browser](https://flu-crew.github.io/FluLens/?run=example_run)** —
-no installation needed and loaded with example data.
+no installation, with example data.
 
 ![FluLens showing a variant's assessment panel](docs/img/variant-panel.png)
 
@@ -16,7 +17,7 @@ no installation needed and loaded with example data.
 
 ## Running it
 
-Three ways. They are the same application; pick whichever you like best!
+There are three ways to run FluLens. They are the same application. Use the one you like.
 
 | | Use when |
 |---|---|
@@ -26,15 +27,15 @@ Three ways. They are the same application; pick whichever you like best!
 
 ### 1. In a browser
 
-Open **<https://flu-crew.github.io/FluLens/>**, click **Open run folder…**, and
-choose a Flumina output directory.
+Open **<https://flu-crew.github.io/FluLens/>**. Click **Open run folder…**. Then
+select a Flumina output folder.
 
-Nothing is uploaded. The page reads the folder locally through the browser's own
-file picker — see [Your data stays on your machine](#your-data-stays-on-your-machine).
+FluLens uploads nothing. The page reads the folder on your machine through the browser's
+file picker. See [Your data stays on your machine](#your-data-stays-on-your-machine).
 
 ### 2. As a single file
 
-FluLens is one self-contained HTML file with no dependencies and no build step.
+FluLens is one HTML file. It has no dependencies and no build step.
 Download `flulens.html` from the
 [latest release](https://github.com/flu-crew/FluLens/releases/latest) and open it.
 
@@ -46,35 +47,35 @@ xdg-open flulens.html    # Linux
 ### 3. As a desktop app [coming soon]
 
 Download `FluLens_<version>_universal.dmg` from the
-[latest release](https://github.com/flu-crew/FluLens/releases/latest), open it and
-drag FluLens to Applications. The build is universal — Apple Silicon and Intel.
+[latest release](https://github.com/flu-crew/FluLens/releases/latest). Open it and
+drag FluLens to Applications. The build is universal — it runs on Apple Silicon and Intel.
 
-The desktop version has real filesystem access, so it reopens your last run
-automatically instead of asking every time.
+The desktop version can read the filesystem. It reopens your last run
+automatically, so it does not ask each time.
 
-> **If macOS says the app cannot be verified**, the release was not signed. Either
-> grab it from a signed release, or allow it once under **System Settings →
+> **If macOS says it cannot verify the app**, the release is not signed. You can
+> get it from a signed release, or you can permit it one time. Go to **System Settings →
 > Privacy & Security → Open Anyway**.
 
-Windows and Linux builds are attached to releases too, but the browser version is
-the better path on both.
+There are Windows and Linux builds on the releases page too. On both systems, the browser
+version is the better choice.
 
 ---
 
 ## Try it with the example dataset
 
-You do not need a pipeline run to see what FluLens does. `example_run/` is a small
-**synthetic** Flumina output: twelve samples, 1,378 calls, all twelve gene
+You do not need a pipeline run to see FluLens. `example_run/` is a small
+**synthetic** Flumina output: twelve samples, 1,378 calls, and all twelve gene
 products.
 
 **[▶ Open it live, nothing to download](https://flu-crew.github.io/FluLens/?run=example_run)**
 
-To load it locally instead, which is also the way to check that the desktop app
-and the folder picker work before you point them at real data:
+You can also load it on your machine. This is a good way to test the desktop app
+and the folder picker before you use real data:
 
 | Get it | How |
 |---|---|
-| [Browse it on GitHub](https://github.com/flu-crew/FluLens/tree/main/example_run) | see the file layout a run is expected to have |
+| [Browse it on GitHub](https://github.com/flu-crew/FluLens/tree/main/example_run) | see the file layout a run must have |
 | [`example_run.zip`](https://github.com/flu-crew/FluLens/releases/latest) | attached to every release |
 | [Download the whole repository](https://github.com/flu-crew/FluLens/archive/refs/heads/main.zip) | `example_run/` is inside it |
 
@@ -83,23 +84,21 @@ git clone https://github.com/flu-crew/FluLens.git
 # then in FluLens: Open run folder… -> FluLens/example_run
 ```
 
-It is deliberately built so the controls have something to act on: a library that
-fails QC, two segments that never assembled, GATK4 genotype calls with no LoFreq
-counterpart, and skewed strand balance on a fraction of the calls.
+The example gives the controls something to act on. It contains a library that
+fails QC, two segments that did not assemble, GATK4 genotype calls with no LoFreq
+counterpart, and skewed strand balance on some of the calls.
 
-All twelve samples also ship with **reads**, so the pile-up opens on the example
-— click any sample in the `read pile-up` view. The BAMs are capped at ~200×
-depth to keep them small (a real `A1` BAM would be 86 MB); allele fractions stay
-faithful, only the read count is thinned. `example_run/README.md` has the
-reasoning.
+All twelve samples also include **reads**, so the pile-up opens on the example.
+Click any sample in the `read pile-up` view. The BAMs are capped at ~200×
+depth to keep them small. A real `A1` BAM would be 86 MB. The allele fractions stay
+correct; only the read count is thinned. `example_run/README.md` explains why.
 
 ---
 
 ## What to load into FluLens
 
-A Flumina output directory: the one containing `variant_analysis/`. Everything
-except the first file is optional, and FluLens says in the sidebar which of them
-it found:
+Load a Flumina output folder — the one that contains `variant_analysis/`. Only the first
+file is required; the rest are optional. The sidebar reports which files FluLens found:
 
 | Path | What it adds |
 |---|---|
@@ -113,14 +112,12 @@ it found:
 | `IRMA_results/<sample>/tables/READ_COUNTS.txt` | the per-segment coverage strip |
 | `wfabc*/FIT_results.csv` | selection coefficients and drift tests |
 
-A **metadata CSV** can be loaded separately when the run was configured without
-one. The sidebar reports how many samples the join actually matched, which is the
-number worth reading: a join that silently matched half your samples looks
-identical to one that matched all of them.
+You can load a **metadata CSV** on its own if the run had no metadata. The sidebar
+reports how many samples the join matched. That number is the one to read: a join that
+matched half your samples looks the same as a join that matched all of them.
 
-If you have no run of your own to hand, the
-[example dataset](#try-it-with-the-example-dataset) above populates every one of
-these.
+If you have no run of your own, the
+[example dataset](#try-it-with-the-example-dataset) above fills every one of these.
 
 ---
 
@@ -128,82 +125,82 @@ these.
 
 ![The full matrix at genome scale](docs/img/overview.png)
 
-**The matrix.** Every call in the run, positioned by product and codon. Zoom with
-the wheel, drag to pan, click a sample name to highlight its row, drag a name to
-reorder. Click any header to sort; shift-click to add a second key.
+**The matrix.** It shows every call in the run, placed by product and codon. Use the
+wheel to zoom and drag to pan. Click a sample name to highlight its row. Drag a name to
+move it. Click any header to sort; shift-click to add a second sort key.
 
-**Variant detail.** Click a cell and FluLens loads that one sample's VCF and shows
-the amino-acid change, the raw numbers, allele frequency on a linear or log axis,
-strand balance against the *reference* allele's, and a verdict.
+**Variant detail.** Click a cell. FluLens loads that one sample's VCF. It shows
+the amino-acid change, the raw numbers, the allele frequency on a linear or log axis,
+the strand balance against the *reference* allele, and a verdict.
 
-**Variant assessment.** Four verdicts — *Looks real*, *Treat with caution*,
-*Likely artefact*, *Cannot assess* — each listing its reasons, weighing strand
-balance, depth, allele frequency and the number of reads actually supporting the
-call. Supporting reads are not depth: a 0.5% call on 15,000× has enormous depth
-and may rest on a handful of alt reads.
+**Variant assessment.** There are four verdicts — *Looks real*, *Treat with caution*,
+*Likely artefact*, and *Cannot assess*. Each verdict lists its reasons. It weighs strand
+balance, depth, allele frequency, and the number of reads that support the
+call. Supporting reads are not the same as depth: a 0.5% call on 15,000× has high depth
+but may rest on only a few alt reads.
 
-**Consensus view.** Every sample's own residue at every codon, drawn as
-differences from the reference rather than a wash of colour.
+**Consensus view.** It shows each sample's own residue at every codon. It draws only the
+differences from the reference, not a full field of colour.
 
-**Coverage strip.** Reads recovered per segment, per sample, by decade. The
-variant table structurally cannot tell you a segment recovered 5,455 reads rather
-than 509,426; this can.
+**Coverage strip.** It shows the reads recovered per segment, per sample, by decade. The
+variant table cannot tell you that a segment recovered 5,455 reads and not
+509,426; this strip can.
 
-**QC column.** A per-sample verdict from the raw variant table — invariant across
-whatever filters you have set, because QC is a fact about the library and not
+**QC column.** It gives a per-sample verdict from the raw variant table. The verdict does
+not change with your filters, because QC is a fact about the library and not
 about the view. Click the mark to override it.
 
 **FluMut markers**, **SNPGenie diversity layers**, **WFABC selection results**, and
-**export** to CSV, TSV, TXT, JSON, Markdown or VCF, every file carrying a header
-recording the filters that produced it.
+**export** to CSV, TSV, TXT, JSON, Markdown, or VCF. Each file has a header that
+records the filters that made it.
 
 ---
 
-## Things worth knowing before you trust a number
+## Things to know before you trust a number
 
-These are properties of the data, not of this viewer, and they are not visible
-from the tables themselves.
+These are properties of the data, not of this viewer. You cannot see them
+in the tables themselves.
 
 **LoFreq and GATK4 do not report the same quantity.** LoFreq's allele frequency is
 an allele *fraction*. GATK4's is a *genotype* — a hom-alt call reads 1.0 whatever
-the reads say. At one measured site LoFreq said 85.98%, GATK4 said 100%, and the
-reads said 85.44%. FluLens reconciles this at load, giving GATK4 rows LoFreq's
-fraction wherever both callers found the same change, and flagging the rest as
-genotypes. Genotype-only calls are excluded from the consensus, because a genotype
-cannot be read as "above 50%".
+the reads say. At one measured site, LoFreq said 85.98%, GATK4 said 100%, and the
+reads said 85.44%. FluLens reconciles this at load. It gives GATK4 rows LoFreq's
+fraction where both callers found the same change. It flags the rest as
+genotypes. The consensus excludes genotype-only calls, because you cannot read a genotype
+as "above 50%".
 
 **Both callers emit a row for the same change**, so the table has two rows per
-variant at most sites. Anything counting calls per codon has to dedupe on position
-and alternative first.
+variant at most sites. To count calls per codon, first remove the duplicates by
+position and alternative.
 
-**FluMut's HA and NA markers are H5/N1-numbered.** `HA1-5` means H5 HA1 numbering
-and `NA-1` means N1 NA numbering, so on an H3N2 run those positions are read
-against the wrong ruler. The internal genes — PB2, PB1, PA, NP, NS — are
-subtype-agnostic and fine. FluLens detects the subtype from the reference segment
-names and marks HA/NA findings it cannot confirm. A bare `A_HA` with no subtype
-suffix counts as unconfirmable, not as a pass.
+**FluMut's HA and NA markers use H5/N1 numbering.** `HA1-5` means H5 HA1 numbering
+and `NA-1` means N1 NA numbering. So on an H3N2 run, those positions use the wrong
+numbering. The internal genes — PB2, PB1, PA, NP, and NS — do not depend on subtype and
+are correct. FluLens finds the subtype from the reference segment
+names. It marks the HA and NA findings that it cannot confirm. A bare `A_HA` with no
+subtype suffix counts as unconfirmable, not as a pass.
 
-**Depth below 100 fakes fixations.** Low template input makes both callers report
-false fixed differences, which is why Flumina's own floor is `min_depth 100` and
-why any verdict here is downgraded below it.
+**Depth below 100 makes false fixed differences.** With low template input, both callers
+report false fixed differences. This is why Flumina's own floor is `min_depth 100`, and
+why FluLens downgrades any verdict below it.
 
-**The assessment thresholds are absolute and are not the sidebar sliders.** Moving
-a slider would otherwise change the verdict that the slider's own filter then
-selects on. The panel says where a call sits relative to your current filters
-without letting that move the verdict.
+**The assessment thresholds are absolute. They are not the sidebar sliders.** If they were
+the sliders, a slider would change the verdict that the same slider then filters on. The
+panel shows where a call sits against your current filters, but the filters do not change
+the verdict.
 
-**In the SNPGenie layer, 99.1% of cells have one of πN or πS at zero.** At a single
-codon in a single sample the value mostly reports *which kind* of difference was
-seen, not which exceeds the other. The pattern across codons is the signal.
+**In the SNPGenie layer, 99.1% of cells have πN or πS at zero.** At one
+codon in one sample, the value mostly reports *which kind* of difference it
+found, not which one is larger. The result is the pattern across many codons.
 
 ---
 
 ## Your data stays on your machine
 
 FluLens has no server and makes no network requests. The browser version reads
-your run folder through the file picker; the desktop version reads it from disk.
-Nothing is uploaded, and the hosted page at `flu-crew.github.io` is a static file
-that could be saved and run offline with no change in behaviour.
+your run folder through the file picker. The desktop version reads it from disk.
+It uploads nothing. The hosted page at `flu-crew.github.io` is a static file. You could
+save it and run it offline with no change in behaviour.
 
 ---
 
@@ -220,27 +217,27 @@ rustup target add aarch64-apple-darwin x86_64-apple-darwin
 cd desktop && cargo tauri build --target universal-apple-darwin
 ```
 
-> **The frontend is compiled into the binary.** Editing `prototypes/flulens.html`
-> changes nothing the desktop app displays until you rebuild. This is the single
-> most common way to lose an hour here.
+> **The binary contains the compiled frontend.** If you edit `prototypes/flulens.html`,
+> the desktop app shows no change until you rebuild. People forget this often and lose
+> time.
 
-Further reading, all of it maintainer-facing:
+More reading, all of it for maintainers:
 
 - [`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md) — how the two run loaders work,
-  regenerating the example, and the things that reliably cost people an hour
-- [`docs/RELEASING.md`](docs/RELEASING.md) — signing, notarisation and cutting a
-  release. Read the DMG section before shipping one: Tauri notarises the app but
-  not the disk image, so a green build can still produce a download macOS blocks
-- [`desktop/README.md`](desktop/README.md) — the Tauri shell's design
+  how to regenerate the example, and the mistakes that often cost people time
+- [`docs/RELEASING.md`](docs/RELEASING.md) — how to sign, notarise, and cut a
+  release. Read the DMG section before you ship one: Tauri notarises the app but
+  not the disk image, so a good build can still make a download that macOS blocks
+- [`desktop/README.md`](desktop/README.md) — the design of the Tauri shell
 
 ---
 
 ## Citing
 
-If FluLens contributed to published work, please cite it — see
+If FluLens helped your published work, please cite it — see
 [`CITATION.cff`](CITATION.cff). Please cite
-[Flumina](https://github.com/flu-crew/Flumina) as well if you used the pipeline
-that produced the data.
+[Flumina](https://github.com/flu-crew/Flumina) too if you used the pipeline
+that made the data.
 
 ## License
 
