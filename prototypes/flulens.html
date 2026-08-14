@@ -7491,6 +7491,40 @@ function readsBaseBlock(col,nt){
     `<div class="note">Counted over every read that passed the filters, not over `+
       `the ${B.S.stride>1?'1-in-'+B.S.stride+' sample ':''}stack drawn above.</div>`;
 }
+/* The "Selected Position" block when the codon carries NO call. The pile-up lets
+   you land on any base, most of which no caller flagged, and a blank panel there
+   reads as "nothing to say" when the answer is a real one: this position is not a
+   significant variant. Same red verdict box the called panel uses, so the two
+   answers look like two values of one field, not two different panels. The reason
+   is read from the same per-position counts readsBaseBlock draws. */
+function readsNoCallBlock(col,nt){
+  let B=null;
+  for(const b of readBlocks) if(col>=b.pr.off&&col<b.pr.off+b.pr.aa){ B=b; break; }
+  if(!B) return '';
+  const p1=refOfIdx(B.ex,(col-B.pr.off)*3+nt);
+  if(p1<1||p1>B.S.L) return '';
+  const p0=p1-1, o=p0*5, cn=B.S.cnt;
+  const rb=B.S.ref?B.S.ref[p0]:null;
+  const tot=cn[o]+cn[o+1]+cn[o+2]+cn[o+3]+cn[o+4];
+  // Strongest non-reference base, which is what a caller would have to act on.
+  let altB=null, altN=0;
+  for(let k=0;k<4;k++){ const b='ACGT'[k]; if(b===rb) continue; if(cn[o+k]>altN){ altN=cn[o+k]; altB=b; } }
+  const altF=tot?altN/tot*100:0;
+  const reasons=['No variant caller reported a change here.'];
+  if(tot===0){
+    reasons.push('No reads cover this position, so there is nothing to call.');
+  } else if(altB&&altN>0){
+    reasons.push(`The strongest non-reference allele is `+
+      `<b style="color:${NT_COL[altB]||''}">${altB}</b> at ${altF.toFixed(2)}% `+
+      `(${altN.toLocaleString()} of ${tot.toLocaleString()} reads), below the level a caller reports.`);
+  } else {
+    reasons.push(`The reads match the reference`+
+      (rb?` <b style="color:${NT_COL[rb]||''}">${rb}</b>`:'')+
+      ` (${tot.toLocaleString()} reads).`);
+  }
+  return `<div class="psec">variant assessment</div>`+
+    `<div class="verdict bad"><b>Not a significant variant</b>${reasons.join('<br>')}</div>`;
+}
 function renderDetail(){
   const el=document.getElementById('detailbody');
   if(!ready){ el.innerHTML='<div class="empty">Open a run to begin.</div>'; return; }
@@ -7531,6 +7565,12 @@ function renderDetail(){
     if(selVariant!==null){
       cs.innerHTML='<div class="subhead">Selected Position</div><div id="callbody"></div>';
       renderVariant(document.getElementById('callbody'),selVariant);
+    } else if(ntSel()&&selCol!==null){
+      // A base was selected but its codon carries no call: still answer the
+      // "Selected Position" question, with the not-a-variant verdict.
+      const nc=readsNoCallBlock(selCol,selNt);
+      if(nc) cs.innerHTML='<div class="subhead">Selected Position</div>'+nc;
+      else cs.remove();
     } else cs.remove();
     return;
   }
