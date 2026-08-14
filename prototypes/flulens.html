@@ -465,6 +465,11 @@ variant_analysis/ and vcf_files/</div>
         show soft-clipped tails</label></div>
       <div class="fld"><label><input type="checkbox" id="readqual">
         colour by base quality</label></div>
+      <!-- Two quality controls, and they act on different things: the one above
+           repaints the read BODY in Phred bands, this one greys the MARKS. The
+           `checked` attribute must track the readQualFade default. -->
+      <div class="fld"><label><input type="checkbox" id="readqualfade" checked>
+        fade marks by base quality</label></div>
       <!-- What the marks on a read MEAN depends on the alphabet, and the two
            are not the same set: every base disagreement against only those that
            change the residue. Saying it once for both would be saying it
@@ -478,8 +483,7 @@ variant_analysis/ and vcf_files/</div>
         <div class="lticks"><span>A</span><span>C</span><span>G</span><span>T</span></div>
         <div class="note" style="margin-top:6px">Only bases that DISAGREE with the
 reference are painted; a read that matches is body colour all the way across.
-Mismatches fade with base quality — a pale mark is a low-BQ disagreement, and
-the tooltip carries the number.</div>
+<span id="readfadenote"></span> The tooltip carries the base quality either way.</div>
         <div class="lticks" style="margin-top:6px">
           <span style="color:var(--dim)">&#9644; deletion</span>
           <span style="color:var(--ins)">&#9612; insertion</span>
@@ -503,8 +507,8 @@ not. The lit read keeps its highlight.</div>
 translated residue disagrees with the reference protein, in this product's
 frame — so a read carrying only synonymous changes draws clean, and the marks
 that remain are the ones the rest of this app calls nonsynonymous. Coloured by
-the residue scheme, faded by the worst base quality in the codon. A read that
-does not span all three bases of a codon is not translated.</div>
+the residue scheme.<span id="readaafadenote"></span> A read that does not span
+all three bases of a codon is not translated.</div>
       </div>
       <div class="note" id="readnote" style="margin-top:6px"> </div>
       <!-- The one thing a sampled pileup must never let a reader do is count off
@@ -580,10 +584,15 @@ the changed base's colour.</div>
           <option value="hydro">hydrophobicity</option>
         </select></div>
       <div class="fld"><span>outline</span>
+        <!-- `halo` is feathered, the other two are strokes. Listed second so the
+             order runs none, softest, then the two hard outlines. The `selected`
+             attribute must track the aaHalo default — a stored preference still
+             wins over both. -->
         <select id="aahalo" style="flex:1;min-width:0">
           <option value="none">none</option>
-          <option value="thin">thin</option>
-          <option value="medium">medium</option>
+          <option value="halo" selected>halo</option>
+          <option value="thin">thin outline</option>
+          <option value="medium">medium outline</option>
         </select></div>
       <div class="fld"><label><input type="checkbox" id="square" checked>
         square cells (scroll zooms both)</label></div>
@@ -988,14 +997,23 @@ const AA_SCHEMES={
    The `selected` attribute on the <option> must track this — see the note
    there; a stored preference still wins over both. */
 let aaScheme='zappo';
-/* Outline weight behind a coloured letter, as a fraction of glyph height.
-   strokeText centres the stroke on the path, so half of it grows outward —
-   which is why the first attempt at 0.16 read as a thick casing rather than a
-   halo. 'none' skips the stroke entirely; legible on pale cells, less so mid-ramp. */
-const HALO_W={none:0, thin:0.055, medium:0.10};
-// No outline by default. The halo helps on pale mid-ramp cells but reads as a
-// casing on every other cell, and with ClustalX now on it is doubly busy.
-let aaHalo='none';
+/* What goes behind a coloured letter, as a fraction of glyph height.
+
+   TWO KINDS, and the difference is the whole point. `stroke` is strokeText,
+   centred on the path so half of it grows outward — which is why 0.16 read as a
+   thick casing rather than a halo, and why the control was turned off entirely.
+   `blur` is the feathered form: the glyph is drawn in the mono ink through a
+   shadow, so the ink fades out instead of ending at an edge. A stroke says
+   "this letter has a border"; a halo says "this letter is lit from behind", and
+   on a mid-ramp cell that is the difference between legible and outlined.
+
+   It is not decoration. A residue colour lands on a frequency cell it knows
+   nothing about: on the blue ramp, 99 of the 126 residue x bucket pairs come
+   out under 3:1 and the worst is 1.01:1 — Zappo's blue R/H/K on mid-blue,
+   reported as "blue letters on a blue background". Feathering is the default
+   because that is the reading it fixes; `none` is still one click away. */
+const HALO={none:{}, halo:{blur:0.16,passes:3}, thin:{stroke:0.055}, medium:{stroke:0.10}};
+let aaHalo='halo';
 /* EVERY persisted view preference is declared here, above the UI wiring that
    restores it from localStorage. Declaring one further down and restoring it up
    here has now bitten twice: the read hits the temporal dead zone, and because
@@ -3149,7 +3167,7 @@ document.getElementById('aahalo').onchange=e=>{
 try{ const a=lsGet('aascheme');
   if(a&&AA_SCHEMES[a]!==undefined){ aaScheme=a; document.getElementById('aascheme').value=a; }
   const h=lsGet('aahalo');
-  if(h&&HALO_W[h]!==undefined) aaHalo=h;
+  if(h&&HALO[h]!==undefined) aaHalo=h;
 }catch(e){}
 document.getElementById('aahalo').value=aaHalo;
 try{ const q=lsGet('square'); if(q!==null) squareCells=q==='1'; }catch(e){}
@@ -3869,11 +3887,10 @@ function drawNucleotides(bx,by,bw,bh,c0,c1,r0,r1,rh,expH,expPos){
   const letters = cw>=21 && rh>=9;      // room for three legible glyphs
   const w3=cw/3;
   let n=0;
-  /* 1.6, not 1.4. A monospace glyph advances about 0.6em, so a font of size F
-     needs 0.6F of width — the widest that fits w3 is w3/0.6 = 1.67*w3, and 1.4
-     left about a fifth of the cell unused on every letter. Still capped by the
-     row height, which is what binds once the cell is square. */
-  if(letters) ctx.font=Math.min(rh-2,Math.floor(w3*1.6))+'px ui-monospace,monospace';
+  /* The width cap is the same 0.6em advance this used to work out by hand; it
+     lives in glyphPx now, with the row-height cap and the 600 weight, so this
+     view letters like the residue atlas beside it. */
+  if(letters){ ctx.font=glyphFont(rh,w3); ctx.textBaseline='middle'; }
   // consVar in the consensus view, vidx in low frequency — see ntSource().
   const src=ntSource(); if(!src) return;
   for(let r=r0;r<r1;r++){
@@ -3895,17 +3912,21 @@ function drawNucleotides(bx,by,bw,bh,c0,c1,r0,r1,rh,expH,expPos){
       }
       for(let k=0;k<3;k++){
         if(rc[k]===ac[k]) continue;     // only the base that moved
-        ctx.fillStyle=NT_COL[ac[k]]||TH.consDiff;
+        const mc=NT_COL[ac[k]]||TH.consDiff;
+        ctx.fillStyle=mc;
         ctx.fillRect(x0+k*w3, y, Math.max(1,w3), Math.max(1,rh));
         if(letters){
-          ctx.fillStyle=TH.glyphInk; ctx.textAlign='center';
-          ctx.fillText(ac[k], x0+k*w3+w3/2, y+rh/2+Math.min(rh,w3)*0.33);
+          ctx.fillStyle=markInk(mc); ctx.textAlign='center';
+          ctx.fillText(ac[k], x0+k*w3+w3/2, y+rh/2+rh*0.03);
           ctx.textAlign='left';
         }
       }
     }
   }
   window.__ntDrawn=n;
+  // Back to alphabetic before anything else draws text: the band below places
+  // its labels with hand-computed offsets and would ride up by half a line.
+  ctx.textBaseline='alphabetic';
   // the expanded sample's depth band, same as the consensus view
   if(expPos>=0&&expH>0) drawExpandedBand(bx,by,bw,rh,expH,expPos,c0,c1);
 }
@@ -4004,9 +4025,13 @@ function drawReads(bx,by,bw,bh,c0,c1){
         if(rc&&ac){
           for(let k=0;k<3;k++){
             if(rc[k]===ac[k]) continue;
-            ctx.fillStyle=NT_COL[ac[k]]||TH.consDiff;
+            const fc=NT_COL[ac[k]]||TH.consDiff;
+            ctx.fillStyle=fc;
             ctx.fillRect(x+k*w3f,fy+2,Math.max(2,w3f),READ_FOCUS_H-4);
-            if(w3f>=9){ ctx.fillStyle=TH.glyphInk;
+            // markInk, not TH.glyphInk: this row sits directly above the stack
+            // showing the same bases in the same colours, and one base carrying
+            // two different inks a few pixels apart is the drift being fixed.
+            if(w3f>=9){ ctx.fillStyle=markInk(fc);
                         ctx.fillText(ac[k],x+k*w3f+w3f/2,fy+READ_FOCUS_H/2+4); }
           }
           continue;
@@ -4154,7 +4179,13 @@ function drawReads(bx,by,bw,bh,c0,c1){
   // that has to hold a glyph is not the same number.
   const unit = ntAlphabet() ? w3 : cw;
   const letters = unit>=8 && hgt>=9;
-  if(letters) ctx.font=Math.min(hgt,Math.floor(unit*1.5))+'px ui-monospace,monospace';
+  /* One typography for both alphabets, and the matrix atlas's — see GLYPH_PX.
+     The pile-up had grown its own: regular weight at the FULL mark height, so a
+     13 px letter filled a 13 px cell edge to edge, and the size cap was on
+     `unit`, which binds in bases (`w3`) and never in codons (`cw`). The two
+     alphabets therefore lettered differently at the same zoom, which is what
+     "the lettering looks different" was. */
+  if(letters){ ctx.font=glyphFont(hgt,unit); ctx.textBaseline='middle'; }
   /* Alternating lane stripe, the same device the sample list uses. A read whose
      ends are both off-screen has nothing to distinguish it from the read above
      except the gap between them; banding the lanes makes the rows countable
@@ -4215,9 +4246,10 @@ function drawReads(bx,by,bw,bh,c0,c1){
 
 /* One read. A body rect per aligned block (two only across a splice), a rule
    through deletions, a tick at insertions, and the mismatches painted from the
-   list found at scan time. Low-quality mismatches fade rather than vanish —
+   list found at scan time. Low-quality mismatches grey rather than vanish —
    a BQ 12 disagreement is still worth seeing, it is just not worth believing,
-   and the panel carries the number. */
+   and the panel carries the number. See markColour for why greying and not
+   fading. */
 /* A rounded, outlined capsule, inset half a pixel on every side. Reads in one
    row are packed READ_GAP bases apart, which is generous at high zoom and a
    sliver at low — so separation cannot come from the gap alone or the row reads
@@ -4300,6 +4332,51 @@ function readAAMiss(B,r){
   }
   if(out.length) r._aa=Int32Array.from(out);
   return r._aa;
+}
+/* A mark's colour at a given base quality.
+
+   The fade used to be globalAlpha, which blends the mark INTO the read beneath
+   it — and at the qualities this stack actually carries that is most of them:
+   of MC-559 PB2's 3,628 mismatches, 3,125 are BQ 10-19. A red T at alpha .5
+   over a reverse-strand body landed on rgb(58,36,41) against rgb(43,51,64), so
+   the mark came out darker than the read and read as a hole punched through it
+   rather than something painted on it. Reported as "the coloured bases look
+   like they are behind the read span".
+
+   Opaque now, and faded toward the same grey N and '-' already carry — "no
+   information" is exactly what a low-BQ base is — in the three Phred bands the
+   quality key already names, so a reader can put a name to what they see.
+   Theme-independent because the grey is: mixing toward TH.readFwd would put
+   the mark back behind the read in colour space, which is the bug. */
+const DIM_NEUTRAL='#6b7484';
+const _dimCache=new Map();
+function markColour(col,q){
+  if(!readQualFade||q==null||q>=Q_GOOD) return col;
+  const t=q>=Q_OK?0.35:0.6, k=col+t;
+  let v=_dimCache.get(k);
+  if(v===undefined){ v=_mix(col,DIM_NEUTRAL,t); _dimCache.set(k,v); }
+  return v;
+}
+/* Ink for a letter sitting ON a mark, chosen by contrast rather than by theme.
+
+   `TH.glyphInk` is one colour for the whole app, which is right when the ground
+   is the panel and wrong when the ground is a mark whose colour IS the data —
+   the residue schemes put letters on everything from `#ff0000` to `#ffafaf`,
+   and greying a mark for low base quality moves it again. Measured on the
+   Zappo scheme, the fixed ink bottomed out at 3.32:1 (D and E at BQ 15);
+   picking per mark, the worst case over every scheme is 4.28:1.
+
+   Not a new idea in this file: `inkRow` already flips the matrix's letters
+   between these same two inks per frequency bucket. This is that rule with the
+   bucket replaced by the mark's own colour. */
+const _inkCache=new Map();
+function markInk(col){
+  let v=_inkCache.get(col);
+  if(v===undefined){
+    v=_contrast(col,INK_LIGHT)>_contrast(col,INK_DARK)?INK_LIGHT:INK_DARK;
+    _inkCache.set(col,v);
+  }
+  return v;
 }
 function drawOneRead(B,r,y,h,ref,letters,striped){
   const w3=cw/3;
@@ -4399,19 +4476,18 @@ function drawOneRead(B,r,y,h,ref,letters,striped){
     for(let i=0;i<am.length;i+=3){
       const cd=am[i], aa=String.fromCharCode(am[i+1]), q=am[i+2];
       const x=B.xBase+cd*cw;
-      ctx.globalAlpha=Math.max(.3,Math.min(1,q/30));
       // aaColour takes the LETTER — AA_SCHEMES is keyed A:, R:, N: … — and was
-        // being handed AAIDX's integer, so `s[14]` was undefined and every
-        // residue fell through to the scheme's unknown-residue grey. Measured:
-        // 1,169 marks, 1,169 of them #9a9a94.
-        ctx.fillStyle=aaColour(aa)||TH.consDiff;
+      // being handed AAIDX's integer, so `s[14]` was undefined and every
+      // residue fell through to the scheme's unknown-residue grey. Measured:
+      // 1,169 marks, 1,169 of them #9a9a94.
+      const mc=markColour(aaColour(aa)||TH.consDiff,q);
+      ctx.fillStyle=mc;
       ctx.fillRect(x,y,Math.max(1,cw),h);
       if(letters){
-        ctx.fillStyle=TH.glyphInk; ctx.textAlign='center';
-        ctx.fillText(aa,x+cw/2,y+h/2+Math.min(h,cw)*0.34);
+        ctx.fillStyle=markInk(mc); ctx.textAlign='center';
+        ctx.fillText(aa,x+cw/2,y+h/2+h*0.03);
         ctx.textAlign='left';
       }
-      ctx.globalAlpha=1;
     }
     return;
   }
@@ -4422,10 +4498,8 @@ function drawOneRead(B,r,y,h,ref,letters,striped){
         const p0=from+t; if(p0<0||p0>=ref.length) continue;
         const g=clipBaseAt(r,p0); if(!g||g.b===ref[p0]||g.b==='N') continue;
         const j=idxOfRef(B.ex,p0+1); if(j<0) continue;
-        ctx.fillStyle=NT_COL[g.b]||TH.readDel;
-        ctx.globalAlpha=.75;
+        ctx.fillStyle=markColour(NT_COL[g.b]||TH.readDel,g.q);
         ctx.fillRect(B.xBase+j*w3,y,Math.max(1,w3),h);
-        ctx.globalAlpha=1;
       }
     }
   }
@@ -4434,15 +4508,14 @@ function drawOneRead(B,r,y,h,ref,letters,striped){
     const j=idxOfRef(B.ex,mm[i]+1); if(j<0) continue;
     const b=String.fromCharCode(mm[i+1]), q=mm[i+2];
     const x=B.xBase+j*w3;
-    ctx.globalAlpha=Math.max(.3,Math.min(1,q/30));
-    ctx.fillStyle=NT_COL[b]||TH.readDel;
+    const mc=markColour(NT_COL[b]||TH.readDel,q);
+    ctx.fillStyle=mc;
     ctx.fillRect(x,y,Math.max(1,w3),h);
     if(letters){
-      ctx.fillStyle=TH.glyphInk; ctx.textAlign='center';
-      ctx.fillText(b,x+w3/2,y+h/2+Math.min(h,w3)*0.34);
+      ctx.fillStyle=markInk(mc); ctx.textAlign='center';
+      ctx.fillText(b,x+w3/2,y+h/2+h*0.03);
       ctx.textAlign='left';
     }
-    ctx.globalAlpha=1;
   }
 }
 
@@ -4827,11 +4900,11 @@ let variantView='lowfreq';     // 'lowfreq' | 'consensus' | 'reads'
 let viewMode='variants';       // DERIVED — 'variants' | 'consensus' | 'nucleotides' | 'selection' | 'reads'
 function deriveViewMode(){
   if(viewer==='selection')   return 'selection';
-  /* Reads outrank the alphabet axis, and that is the honest ordering rather
-     than a shortcut: a read carries bases, so there is no amino-acid form of
-     this view to choose between. The viewer selector greys while it is on —
-     see placeModeSwitch — for the same reason the variant-view switch greys in
-     selection: the control is inapplicable, not broken. */
+  /* Reads is ONE viewMode for both alphabets, the same economy nucleotides
+     makes below: what the pile-up paints per read differs — bases, or codons
+     whose residue changed — and that is read from `viewer` through ntAlphabet()
+     at the few places it matters. The selector stays live; only `selection`
+     has nothing to say about a single read. */
   if(variantView==='reads')  return 'reads';
   /* Nucleotides stays ONE viewMode for both variant views. Everything that keys
      on 'nucleotides' — ntSel, hitAt, the expanded band, squareRowPx's cw/3 unit,
@@ -5717,6 +5790,13 @@ let readScroll=0;              // top read-row of the stack, fractional
 let readRowH=8;
 let readCap=12000;
 let readStrand=true, readClips=false, readQual=false;
+/* Whether a mark greys with its base quality. On by default: most mismatches in
+   a pile-up are sequencing error and the view should say so. Off is the honest
+   alternative rather than a lesser one — a disagreement is a disagreement, and
+   quality is still on the read-quality overlay, in the tooltip and in the read
+   panel's Phred bars. Not persisted, same as every other control in this
+   section. */
+let readQualFade=true;
 const readScan=new Map();      // sample|seg|cap -> scan result
 const readPending=new Map();
 let readProg=null;             // {seg,frac} while a scan is running
@@ -6003,23 +6083,60 @@ function buildAtlasInto(colW,rowHgt,rows){
   cvs.width=gw*AAS.length; cvs.height=gh*rows.length;
   const a=cvs.getContext('2d');
   a.textAlign='center'; a.textBaseline='middle';
-  a.font='600 '+Math.round(gh*0.72)+'px ui-monospace, Menlo, monospace';
+  a.font=glyphFont(gh,gw);        // device px here; the atlas canvas is unscaled
   a.lineJoin='round';
   rows.forEach((spec,r)=>{
     for(let i=0;i<AAS.length;i++){
       const x=gw*i+gw/2, y=r*gh+gh/2+gh*0.03;
+      /* Clipped to its own cell. The feathered halo spreads by its blur radius
+         in every direction, and the glyphs are packed edge to edge here — a
+         4 px bleed at gh 28 would put one residue's halo inside the next
+         residue's cell, and the row above's inside this one. */
+      a.save();
+      a.beginPath(); a.rect(gw*i, r*gh, gw, gh); a.clip();
       if(spec.scheme){
-        // A residue colour has to sit on top of an arbitrary cell colour, so it
-        // is haloed in the mono ink first — without it, mid-ramp cells swallow
-        // half the alphabet. Thin by default; the casing wants to be felt, not seen.
-        const w=HALO_W[aaHalo]*gh;
-        if(w>0){ a.lineWidth=w; a.strokeStyle=spec.halo; a.strokeText(AAS[i],x,y); }
+        // A residue colour has to sit on top of an arbitrary cell colour, so
+        // the mono ink goes down first — without it, mid-ramp cells swallow
+        // half the alphabet. See HALO for the two kinds and why halo is default.
+        const H=HALO[aaHalo]||{};
+        if(H.stroke){
+          a.lineWidth=H.stroke*gh; a.strokeStyle=spec.halo; a.strokeText(AAS[i],x,y);
+        } else if(H.blur){
+          /* Repeated fills, not one. A single shadow pass at this radius is far
+             too faint to lift a 20 px letter off a mid-ramp cell; each pass
+             composites another copy of the same falloff, so the core builds up
+             while the outer edge stays soft. The fill is the ink itself and is
+             covered by the coloured glyph immediately after — only the bleed
+             survives, which is the whole point. */
+          a.shadowColor=spec.halo; a.shadowBlur=H.blur*gh;
+          a.fillStyle=spec.halo;
+          for(let p=0;p<H.passes;p++) a.fillText(AAS[i],x,y);
+          a.shadowBlur=0; a.shadowColor='transparent';
+        }
         a.fillStyle=aaColour(AAS[i])||spec.halo;
       } else a.fillStyle=spec.ink;
       a.fillText(AAS[i],x,y);
+      a.restore();
     }
   });
   return {cvs,gw,gh};
+}
+/* Cell lettering, in ONE place, so the three surfaces that draw a glyph on a
+   coloured cell cannot drift apart — the residue atlas, the nucleotides matrix
+   and the read pile-up. They had drifted: the atlas at weight 600 and 0.72 of
+   the row, the matrix at regular weight and `min(rh-2, 1.6*w3)`, the pile-up at
+   regular weight and the FULL mark height, which is a letter as tall as its own
+   cell. Reported as the two alphabets "looking different in the lettering".
+
+   0.72 of the cell height, capped by what the cell is WIDE enough to hold: a
+   monospace glyph advances about 0.6em, so a cell of width W takes a font of at
+   most W/0.6. Callers in device pixels (the atlas) get device pixels back. */
+const GLYPH_SCALE=0.72, GLYPH_ADV=0.6;
+function glyphPx(cellH,cellW){
+  return Math.max(6,Math.round(GLYPH_SCALE*Math.min(cellH,cellW/GLYPH_ADV)));
+}
+function glyphFont(cellH,cellW){
+  return '600 '+glyphPx(cellH,cellW)+'px ui-monospace, Menlo, monospace';
 }
 const INK_DARK='#0b0e13', INK_LIGHT='#f6f8fc';
 let inkRow=new Uint8Array(7);
@@ -7340,7 +7457,7 @@ function renderDetail(){
       if(p1>0) p0=p1-1;
     }
     fill('readpane','Selected Read', selRead?readsReadBlock(selRead,B,p0):'');
-    fill('basepane','This Position, Across All Reads',
+    fill('basepane','Position Across Reads',
          (ntSel()&&selCol!==null)?readsBaseBlock(selCol,selNt):'');
     /* The call section is filled asynchronously, so it gets its heading and an
        inner target up front — renderVariant sets innerHTML on what it is given
@@ -8713,6 +8830,18 @@ function placeModeSwitch(){
         const sw=document.getElementById('readramp');
         if(sw) ['A','C','G','T'].forEach((b,i)=>{
           if(sw.children[i]) sw.children[i].style.background=NT_COL[b]; });
+        /* Both keys describe the fade, so both have to stop describing it when
+           it is off. A legend that states Phred bands over a stack drawing none
+           is the same class of wrong as a stale number. */
+        const fn=document.getElementById('readfadenote');
+        if(fn) fn.innerHTML = readQualFade
+          ? 'Mismatches grey with base quality, in the same Phred bands as the '+
+            'quality key (&ge;30 &middot; 20&ndash;29 &middot; &lt;20) — a greyed '+
+            'mark is a low-BQ disagreement.'
+          : 'Every mismatch is painted at full strength, whatever it was read at.';
+        const fa=document.getElementById('readaafadenote');
+        if(fa) fa.innerHTML = readQualFade
+          ? ' Greyed by the worst base quality in the codon.' : '';
         const kn=document.getElementById('readntkey'), ka=document.getElementById('readaakey'),
               kq=document.getElementById('readqualkey');
         if(kn) kn.hidden=!ntAlphabet();
@@ -9076,14 +9205,8 @@ function setViewMode(m){
 }
 /* The two controls set their own axis and let setViewMode() work out the rest,
    so there is still exactly one place that decides what a mode change does. */
-/* The alphabet the pile-up borrowed, to be handed back on the way out. A
-   pile-up is read at the base, so it opens in nucleotides whatever the matrix
-   was in — but silently leaving the reader in a different alphabet than they
-   started in is a state change they did not ask for, so it is only a loan. */
-let readAlphaLoan=null;
 function setViewer(v){
   if(v===viewer) return;
-  readAlphaLoan=null;            // chosen by hand — there is nothing to give back
   viewer=v;
   // Landing on a combination that is not built yet would show the wrong view
   // silently. Move to the one that is, rather than drawing something the
@@ -9100,20 +9223,13 @@ function setViewer(v){
   if(squareCells){ readRowH=squareReadRowH(); syncReadControls(); }
   placeModeSwitch(); schedule();
 }
+/* The alphabet is the READER'S, on both sides of this switch. The pile-up used
+   to borrow it — forced to nucleotides on the way in, handed back on the way
+   out — from when it only drew bases. It draws both now, so the loan was
+   moving a control the reader had set and then moving it back. */
 function setVariantView(vv){
   if(vv===variantView||!hasVariantView(viewer)) return;
-  const wasReads = variantView==='reads';
   variantView=vv;
-  /* Borrow and return the alphabet. Done HERE and not in setViewMode, because
-     setViewMode is handed an already-derived mode: changing `viewer` after the
-     derivation would leave the two disagreeing about what is on screen. */
-  if(vv==='reads'){
-    readAlphaLoan = viewer!=='nucleotides' ? viewer : null;
-    viewer='nucleotides';
-  } else if(wasReads){
-    if(readAlphaLoan&&viewer==='nucleotides') viewer=readAlphaLoan;
-    readAlphaLoan=null;
-  }
   const m=deriveViewMode();
   if(m!==viewMode){ setViewMode(m); return; }
   /* SAME viewMode, different source — and this branch is why the click used to
@@ -9147,6 +9263,10 @@ document.getElementById('readstrand').onchange=e=>{ readStrand=e.target.checked;
 document.getElementById('readclips').onchange=e=>{ readClips=e.target.checked; schedule(); };
 document.getElementById('readqual').onchange=e=>{
   readQual=e.target.checked; placeModeSwitch(); schedule(); };
+// placeModeSwitch too: the key under the legend states the bands, and with the
+// fade off there are no bands to state.
+document.getElementById('readqualfade').onchange=e=>{
+  readQualFade=e.target.checked; placeModeSwitch(); schedule(); };
 /* The control item 0 asked for. `showPile` had no way to be set since the depth
    profile took the band's first-click slot, so the residue distributions behind
    it were unreachable from the UI. refreshBand rather than a bare repaint: the

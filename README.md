@@ -76,7 +76,7 @@ and the folder picker work before you point them at real data:
 |---|---|
 | [Browse it on GitHub](https://github.com/flu-crew/FluLens/tree/main/example_run) | see the file layout a run is expected to have |
 | [`example_run.zip`](https://github.com/flu-crew/FluLens/releases/latest) | attached to every release |
-| [Download the whole repository](https://github.com/flu-crew/FluLens/archive/refs/heads/main.zip) | 2.9 MB, `example_run/` is inside it |
+| [Download the whole repository](https://github.com/flu-crew/FluLens/archive/refs/heads/main.zip) | `example_run/` is inside it |
 
 ```bash
 git clone https://github.com/flu-crew/FluLens.git
@@ -86,6 +86,11 @@ git clone https://github.com/flu-crew/FluLens.git
 It is deliberately built so the controls have something to act on: a library that
 fails QC, two segments that never assembled, GATK4 genotype calls with no LoFreq
 counterpart, and skewed strand balance on a fraction of the calls.
+
+`A4`'s three samples also ship with **reads**, so the pile-up opens on the
+example — click one of them in the `read pile-up` view. Only those three: the
+pile-up shows the caller's depth and the BAM's depth together, and a BAM honest
+to `A1`'s depth would be 86 MB. `example_run/README.md` has the reasoning.
 
 ---
 
