@@ -94,8 +94,9 @@ either changed.
 
 `make_example_bams.py` must run **after** the R script, not before: it reads the
 VCFs and IRMA coverage tables that script writes and derives every read from
-them, which is what keeps the pile-up agreeing with the table beside it. It only
-writes `A4`'s three samples — see `example_run/README.md` for why.
+them, which is what keeps the pile-up agreeing with the table beside it. It
+writes all twelve samples, capped at ~200× depth (`DEPTH_CAP`) so they ship in
+~21 MB — see `example_run/README.md`.
 
 ## Things that will bite you
 
