@@ -6322,9 +6322,16 @@ function changedNt(vi){
    exact bug the nucleotides reference row was written to fix. */
 const ntAlphabet=()=> viewMode==='nucleotides' ||
                       (viewMode==='reads' && viewer==='nucleotides');
-// Nucleotide selection only means anything in a base alphabet, at a zoom that
+/* Where a BASE can be pointed at and selected. The nucleotide alphabet, always;
+   and the pile-up in EITHER alphabet, because the reads are drawn base-by-base
+   whichever the cells are written in — so a click there lands on a base even
+   when the cells show residue mismatches. (ntAlphabet still governs what the
+   CELLS are: that is a separate question from what a click can pick.) */
+const baseAlpha=()=> ntAlphabet() ||
+                     (viewMode==='reads' && readsSample!==null);
+// Base selection only means anything where a base can be picked, at a zoom that
 // shows the thirds. One predicate so the click handlers and the draws agree.
-const ntSel=()=> ntAlphabet() && cw>=3 && selNt!==null;
+const ntSel=()=> baseAlpha() && cw>=3 && selNt!==null;
 
 // Reference residue at a grid column, or null outside a known protein
 function refAt(col){
@@ -8716,7 +8723,7 @@ window.addEventListener('mouseup',e=>{
           selCol=c; selVariant=null; selIrma=null;
           // The reference row draws bases in this view, so a click on it is a
           // click on a base — take the one under the pointer.
-          selNt = ntAlphabet() ? ntUnder(cx,c) : null;
+          selNt = baseAlpha() ? ntUnder(cx,c) : null;
           renderDetail(); schedule();
         }
       } else {
@@ -8748,13 +8755,13 @@ window.addEventListener('mouseup',e=>{
           selIrma=null; selVariant=null; selCol=hit.site;
           // In a base alphabet the click picked a BASE, and a band three bases
           // wide claims two the reader did not point at.
-          selNt = ntAlphabet() ? ntUnder(cx,hit.site) : null;
+          selNt = baseAlpha() ? ntUnder(cx,hit.site) : null;
           renderDetail(); schedule();
         }
         else if(hit){
           selIrma=null;
           selVariant=hit.i; selCol=V.col[hit.i]; selSample=V.row[hit.i];
-          if(ntAlphabet()){
+          if(baseAlpha()){
             /* In the pile-up the POINTER wins. Elsewhere a cell click snaps to
                the base a call changes, because the cell is the call; here the
                reader is pointing at one base of a stack of reads and means that
