@@ -53,3 +53,47 @@ python3 depth_band.py "$RUN" "$RUN/depth_profiles/mindepth_blind_band.tsv"
 
 (Details of an unpublished run were removed here.)
 
+
+## Reproducing the LoFreq `-B` measurement
+
+Does disabling BAQ in `lofreq call` recover real variants or manufacture them?
+`baq_support.py` characterises the calls `-B` adds; `baq_baseline.py` compares
+them against the calls LoFreq already makes, which is the only way a support
+rate means anything.
+
+LoFreq is not installed on the laptop, so the calling runs in the image. The
+run directory is mounted read-only — nothing here writes into it.
+
+```bash
+RUN=~/path/to/Analysis_New/WGS
+OUT=/tmp/baq; mkdir -p "$OUT"
+
+# Deterministic spread, not a hand-picked set.
+ls "$RUN/BAM_files" | sort | awk 'NR%12==1' > "$OUT/samples.txt"
+
+docker run --rm --platform linux/amd64 \
+  -v "$RUN":/data:ro -v "$OUT":/out \
+  --entrypoint bash chutter/flumina:latest -c '
+while read s; do
+  B=/data/BAM_files/$s/final_mapped_reads.bam
+  lofreq call    -f /data/reference.fa -o /out/$s.extbaq.vcf $B 2>/dev/null
+  lofreq call -B -f /data/reference.fa -o /out/$s.nobaq.vcf  $B 2>/dev/null
+done < /out/samples.txt'
+
+python3 baq_support.py  "$RUN" "$OUT" $(tr '\n' ' ' < "$OUT/samples.txt")
+python3 baq_baseline.py "$RUN" "$OUT" $(tr '\n' ' ' < "$OUT/samples.txt")
+```
+
+(Details of an unpublished run were removed here.)
+
+
+
+
+`--entrypoint bash` is required: the image's entrypoint is the Flumina launcher,
+so a bare `docker run ... lofreq` prints the launcher's help instead of running
+LoFreq.
+
+(Details of an unpublished run were removed here.)
+
+
+
