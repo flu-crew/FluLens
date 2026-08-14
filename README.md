@@ -87,10 +87,11 @@ It is deliberately built so the controls have something to act on: a library tha
 fails QC, two segments that never assembled, GATK4 genotype calls with no LoFreq
 counterpart, and skewed strand balance on a fraction of the calls.
 
-`A4`'s three samples also ship with **reads**, so the pile-up opens on the
-example — click one of them in the `read pile-up` view. Only those three: the
-pile-up shows the caller's depth and the BAM's depth together, and a BAM honest
-to `A1`'s depth would be 86 MB. `example_run/README.md` has the reasoning.
+All twelve samples also ship with **reads**, so the pile-up opens on the example
+— click any sample in the `read pile-up` view. The BAMs are capped at ~200×
+depth to keep them small (a real `A1` BAM would be 86 MB); allele fractions stay
+faithful, only the read count is thinned. `example_run/README.md` has the
+reasoning.
 
 ---
 

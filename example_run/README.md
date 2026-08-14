@@ -9,9 +9,9 @@ Do not cite it, and do not use it to sanity-check a result.
 ## What it is
 
 A twelve-sample Flumina output directory, small enough to ship in the repository
-— 12 MB, of which the variant data proper is 476 KB and the rest is the two
+— 26 MB, of which the variant data proper is 476 KB and the rest is the two
 things that have to be bulky to be useful, per-base coverage (4.6 MB) and reads
-(7.2 MB):
+(21 MB):
 
 | | |
 |---|---|
@@ -20,7 +20,7 @@ things that have to be bulky to be useful, per-base coverage (4.6 MB) and reads
 | products | all twelve, including spliced M2 / NEP / PA-X and frameshifted PB1-F2 |
 | curated hits | 275 rows against Flumina's own curated site database |
 | above consensus | 280 calls over 50% |
-| BAMs | `A4`'s three samples only — see below |
+| BAMs | all 12 samples, capped at ~200× depth — see below |
 
 ## What is real about it
 
@@ -62,44 +62,38 @@ Each of these is a control that would sit dead in a demo built from arbitrary da
   what the depth profile draws when a row is opened in the consensus view. Ends
   taper and the interior wobbles, because a flat profile would make that panel
   pointless. A4's two unassembled segments have no coverage table at all, exactly
-  as IRMA would leave them. These tables are 4.6 MB of the 12 MB here; delete
+  as IRMA would leave them. These tables are 4.6 MB of the 26 MB here; delete
   them if you only need the variant grid.
 - **Reads, for the pile-up** — `BAM_files/<sample>/final_mapped_reads.bam`, from
-  `../tools/make_example_bams.py`. Every read is proper-paired (the set FluLens
-  keeps, and the set LoFreq's DP4 is counted over), carries a quality profile
-  that declines toward its 3′ end, and 12% have a soft-clipped tail. The alt
-  allele at each called site is drawn at that record's own AF and split across
-  the strands by its own DP4 — so the pile-up, the frequency in the table and
-  the strand-balance panel are three views of one number rather than three
-  guesses. Verified against `samtools mpileup`: at `A_PB2:1002` in `A4_D1`,
-  both report G 44, ref 913, one deletion, 957 bases.
-  Base qualities are drawn so all three Phred bands are populated — 3.7% of
-  mismatches at ≥30, 7.9% at 20–29, 88.4% below 20, against 11 / 3 / 86 on the
-  real run this was tuned against. Alt-supporting bases sit high and sequencing
-  errors low, which is what makes the pile-up's `fade marks by base quality`
-  control show something.
+  `../tools/make_example_bams.py`, for all 12 samples. Every read is
+  proper-paired (the set FluLens keeps, and the set LoFreq's DP4 is counted
+  over), carries a quality profile that declines toward its 3′ end, and 12% have
+  a soft-clipped tail. The alt allele at each called site is drawn at that
+  record's own AF and split across the strands by its own DP4 — so the pile-up,
+  the frequency in the table and the strand-balance panel are three views of one
+  number rather than three guesses. AF fidelity is verified against `samtools
+  mpileup` across every called site (median error ~0, mean |error| ~0.01).
+  Base qualities are drawn so all three Phred bands are populated — roughly
+  4 / 8 / 88 % at ≥30 / 20–29 / <20, against 11 / 3 / 86 on the real run this was
+  tuned against. Alt-supporting bases sit high and sequencing errors low, which
+  is what makes the pile-up's `fade marks by base quality` control show
+  something.
 
-## Why only A4 has BAMs
+## Depth is capped, so the BAM is a downsample
 
-The pile-up puts the caller's depth and the BAM's depth on screen at the same
-time, so those two numbers have to be consistent — and a BAM honest to `A1`'s
-LoFreq DP (median 4,387, max 33,821) is **86 MB for one sample**. `A4` is the
-deliberately thin library: DP 100–764, which is 1.6 Mbp of alignment per sample
-and ships at ~2.4 MB. The three together are 7.2 MB.
+Every BAM is capped at **~200× per-base depth** so all twelve ship in ~21 MB.
+That is well below the real thing: `A1`–`A3` carry LoFreq DP into the thousands
+(up to 33,821), and a BAM honest to that would be ~86 MB *per sample*. `A4` is
+the deliberately thin library (DP 100–764) and is barely capped at all.
 
-Clicking any of the other nine samples gives the pile-up's own "no BAM for this
-sample" message, which is what you would see on a real run where only some BAMs
-were kept.
+**So for `A1`–`A3` the pile-up's BAM depth sits below the caller depth shown
+beside it** — e.g. `A1_D1 PB2` reads ~220× in the reads where the tooltip's
+caller depth says 3,000+. That is the cap, not the depth bug this app has had
+before: the allele *fraction* is still faithful, only the read count is thinned.
+`A4`, uncapped, is where BAM and caller depth actually track each other.
 
-Two properties worth knowing, because they are the ones that took the work:
-
-- **BAM depth is above caller depth at every one of the 121 called sites**, min
-  ratio 1.22. This directory's IRMA coverage tables and its VCF depths were
-  generated independently and disagree — 40–50% of A4's calls claim a DP above
-  IRMA's depth × 1.3, by as much as 199× — so the generator floors the read
-  profile at what each call claims instead of trusting IRMA's shape alone.
-- **`A4_D3` and `A4_D5` carry 6 of 8 segments**, matching what IRMA assembled
-  for them, so the pile-up's absent-segment path is reachable here too.
+`A4_D3` and `A4_D5` carry 6 of 8 segments, matching what IRMA assembled for
+them, so the pile-up's absent-segment path is reachable from the example.
 
 ## What it does not include
 

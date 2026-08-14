@@ -28,13 +28,17 @@ Needs samtools on PATH. Deterministic: same seed, same bytes.
 import argparse, os, random, subprocess, sys
 from pathlib import Path
 
-SAMPLES = ["A4_D1", "A4_D3", "A4_D5"]
+SAMPLES = ["A1_D1", "A1_D3", "A1_D5", "A2_D1", "A2_D3", "A2_D5",
+           "A3_D1", "A3_D3", "A3_D5", "A4_D1", "A4_D3", "A4_D5"]
 READ_LEN = 150
 INSERT_MEAN, INSERT_SD = 300, 45
 BWA_FACTOR = 1.3          # BAM depth over IRMA depth; see module docstring
 CALLER_HEADROOM = 1.15    # ... and over the caller's own DP, where that is higher
 CALL_BUMP_W = 260         # half-width of the bump a call raises, in bases
 CLIP_MARGIN = 1.10        # coverage is counted before clipping shortens reads
+DEPTH_CAP = 200           # per-base ceiling, so all 12 samples ship small. A1-A3's
+                          # real DP runs to 35,000; capping is a demo downsample,
+                          # and the pile-up's job here is to have reads to show.
 ERR_RATE = 0.002          # per base, and deliberately low-quality when it fires
 CLIP_FRAC = 0.12          # reads carrying a soft-clipped tail
 DEL_FRAC = 0.008          # reads carrying a short deletion
@@ -124,9 +128,9 @@ def depth_target(irma, calls, seg_len):
     The BAM has to be the wider number, since the callers filter and it does
     not, so each call raises a triangular bump around itself rather than a
     step -- a rectangular floor would draw a cliff in the coverage strip."""
-    target = [d * BWA_FACTOR for d in irma]
+    target = [min(DEPTH_CAP, d * BWA_FACTOR) for d in irma]
     for pos, (_, _, _, _, _, dp) in calls.items():
-        need = dp * CALLER_HEADROOM
+        need = min(DEPTH_CAP, dp * CALLER_HEADROOM)
         p0 = pos - 1
         for p in range(max(0, p0 - CALL_BUMP_W), min(seg_len, p0 + CALL_BUMP_W)):
             v = need * (1 - abs(p - p0) / CALL_BUMP_W)
@@ -292,7 +296,7 @@ def sam_records(sample, refs, cov_dir, calls, rng):
             p0 = pos - 1
             # CLIP_MARGIN: coverage here counts a full READ_LEN, while the
             # aligned block is shorter wherever a tail was clipped.
-            need = int(dp * CALLER_HEADROOM * CLIP_MARGIN)
+            need = int(min(DEPTH_CAP, dp * CALLER_HEADROOM) * CLIP_MARGIN)
             guard = 0
             while cov[p0] < need and guard < 50000:
                 guard += 1
