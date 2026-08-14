@@ -53,3 +53,47 @@ python3 depth_band.py "$RUN" "$RUN/depth_profiles/mindepth_blind_band.tsv"
 
 `depth_band.py` over all 143 samples takes about 15 minutes and produced
 111,873 rows on the 2026-08-09 run.
+
+## Reproducing the LoFreq `-B` measurement
+
+Does disabling BAQ in `lofreq call` recover real variants or manufacture them?
+`baq_support.py` characterises the calls `-B` adds; `baq_baseline.py` compares
+them against the calls LoFreq already makes, which is the only way a support
+rate means anything.
+
+LoFreq is not installed on the laptop, so the calling runs in the image. The
+run directory is mounted read-only — nothing here writes into it.
+
+```bash
+RUN=~/path/to/Analysis_New/WGS
+OUT=/tmp/baq; mkdir -p "$OUT"
+
+# Deterministic spread, not a hand-picked set.
+ls "$RUN/BAM_files" | sort | awk 'NR%12==1' > "$OUT/samples.txt"
+
+docker run --rm --platform linux/amd64 \
+  -v "$RUN":/data:ro -v "$OUT":/out \
+  --entrypoint bash chutter/flumina:latest -c '
+while read s; do
+  B=/data/BAM_files/$s/final_mapped_reads.bam
+  lofreq call    -f /data/reference.fa -o /out/$s.extbaq.vcf $B 2>/dev/null
+  lofreq call -B -f /data/reference.fa -o /out/$s.nobaq.vcf  $B 2>/dev/null
+done < /out/samples.txt'
+
+python3 baq_support.py  "$RUN" "$OUT" $(tr '\n' ' ' < "$OUT/samples.txt")
+python3 baq_baseline.py "$RUN" "$OUT" $(tr '\n' ' ' < "$OUT/samples.txt")
+```
+
+On the 2026-08-09 run, 12 samples: `-B` adds 270 calls (+15.8%) and loses none,
+63% of them past position 200 rather than at the segment starts BAQ is known to
+break, corroborated at the same rate as the baseline, and enriched ~5x for
+indel adjacency (4.4% vs 0.9% within 10 bp).
+
+`--entrypoint bash` is required: the image's entrypoint is the Flumina launcher,
+so a bare `docker run ... lofreq` prints the launcher's help instead of running
+LoFreq.
+
+**Indel positions come from iVar's TSV, never from the GATK4 indel VCF.** GATK4
+reports 4 indel records across all 143 samples against iVar's 916 across 129 of
+them, because it is a genotype caller and does not see indels below genotype
+frequency. Using it makes BAQ look like it protects against nothing.
