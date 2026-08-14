@@ -16,6 +16,14 @@
        specimen keeps its purple, and green is left alone so it never competes
        with --good on a "Looks real" verdict. */
     --logo-lens:#4dabf7; --logo-core:#8b5cf6; --logo-knob:#a78bfa;
+    --picklabel:#ffffff; --ins:#c060c0;
+    /* Phred bands for the read-quality profile. Semantic, and deliberately NOT
+       --good/--warn/--bad: those carry a verdict about a VARIANT everywhere
+       else in this panel, and a base quality is a property of one measurement,
+       not a judgement of the call it contributes to. Kept close enough to read
+       as the same traffic light, far enough not to be mistaken for it. */
+    --qGood:#4caf6a; --qOk:#d8b63f; --qBad:#e08a3c;
+    --qmark:#dce6ff; --qgrid:#232833;
   }
   :root[data-theme="light"]{
     --bg:#fcfcfb; --panel:#f2f2ef; --panel2:#e9e9e4; --border:#dcdcd5;
@@ -25,13 +33,22 @@
     /* Chosen for the pale surface, not derived by dimming the dark values —
        #4dabf7 on #fcfcfb is 2.2:1 and effectively invisible. */
     --logo-lens:#0b6bbf; --logo-core:#7c3aed; --logo-knob:#6d28d9;
+    --picklabel:#000000; --ins:#9a3a9a;
+    --qGood:#2f8f4a; --qOk:#b08a1a; --qBad:#c26a1c;
+    --qmark:#12356b; --qgrid:#dcdcd5;
   }
   *{box-sizing:border-box}
   html,body{height:100%;margin:0}
   body{background:var(--bg);color:var(--text);
     font:13px/1.45 system-ui,-apple-system,"SF Pro Text",Segoe UI,sans-serif;
     display:flex;flex-direction:column;overflow:hidden;user-select:none}
-  header{display:flex;align-items:center;gap:14px;padding:9px 14px;
+  /* WRAPS. The header needs 1,106 px to lay out in one row — measured, with a
+     loaded run's chip in it — and below that the tools (export, theme, zoom,
+     Fit) simply fell off the right edge and were gone, because nothing here can
+     shrink and the page cannot scroll. Wrapping costs a second row on a narrow
+     window and keeps every control reachable. */
+  header{display:flex;flex-wrap:wrap;align-items:center;gap:14px;row-gap:7px;
+    padding:9px 14px;
     border-bottom:1px solid var(--border);background:var(--panel);flex:none}
   /* The wordmark is the one place the app names itself, so it carries the size.
      15px against the 11-12px of everything else in the header — enough to read
@@ -71,8 +88,23 @@
     border:1px solid var(--border);border-radius:7px;padding:4px 6px;cursor:pointer}
 
   #shell{flex:1;display:flex;min-height:0}
+  /* The two panes are the only things in this app that scroll, and on a Mac set
+     to "Show scroll bars: Always" their bars are permanent AND reserve layout
+     width — a fat grey rule down the inside edge of each pane, one at the left
+     of the matrix and one at the right of the window. That reads as the window
+     having broken rather than as a pane that scrolls, which is exactly how it
+     was reported. Thin, overlaid, and coloured to belong.
+
+     overflow-x is pinned HIDDEN rather than left to inherit: `overflow-y:auto`
+     alone computes x to `auto` as well, so any sidebar content a pixel too wide
+     would add a horizontal bar along the bottom of the pane too. */
   aside{background:var(--panel);display:flex;flex-direction:column;min-height:0;
-    overflow-y:auto;flex:none}
+    overflow-y:auto;overflow-x:hidden;flex:none;
+    scrollbar-width:thin;scrollbar-color:var(--border) transparent}
+  aside::-webkit-scrollbar{width:7px;height:7px}
+  aside::-webkit-scrollbar-track{background:transparent}
+  aside::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px}
+  aside:hover::-webkit-scrollbar-thumb{background:var(--dim)}
   #side{width:272px;border-right:1px solid var(--border)}
   #detail{width:316px;border-left:1px solid var(--border)}
   .sec{padding:10px 12px;border-bottom:1px solid var(--border);flex:none}
@@ -127,7 +159,9 @@
   .prod .ct{color:var(--dim)}
   .legend .lramp{display:flex;height:11px;border-radius:3px;overflow:hidden}
   .legend .lramp div{flex:1}
-  .legend .lticks{display:flex;justify-content:space-between;
+  .lramp{display:flex;height:11px;border-radius:3px;overflow:hidden}
+  .lramp div{flex:1}
+  .lticks{display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;
     font:9px ui-monospace,monospace;color:var(--dim);margin-top:3px}
   .note{font:10px/1.55 ui-monospace,monospace;color:var(--dim);white-space:pre-line}
   /* `class="dim"` was in use at two places in the panel with no rule behind it,
@@ -139,7 +173,12 @@
   .bad{color:var(--bad)}
   .ok{color:#7fc79b}
 
-  #wrap{flex:1;position:relative;min-width:0}
+  /* overflow:hidden is load-bearing. The canvas is absolutely positioned AND
+     carries an explicit pixel width written by resize(); if that width is ever
+     stale — the window narrowed, the detail panel opened, a scrollbar appeared —
+     the canvas paints straight over #detail instead of being clipped, which
+     looks exactly like the layout having broken. */
+  #wrap{flex:1;position:relative;min-width:0;overflow:hidden}
   canvas{position:absolute;inset:0;display:block}
   .hint{position:absolute;left:14px;bottom:10px;color:var(--muted);
     font:10px ui-monospace,monospace;background:var(--panel);opacity:.94;
@@ -177,6 +216,22 @@
   .dl dd{margin:0;color:var(--text);word-break:break-word}
   .mut{font:15px ui-monospace,monospace;font-weight:600;color:#dce6ff;margin-bottom:2px}
   .sub{font:11px ui-monospace,monospace;color:var(--muted);margin-bottom:10px}
+  /* Panel sections. The pile-up stacks up to three answers of increasing width
+     — the read, the base, the call — and run together they read as one long
+     block with no telling where one ends. A rule and a named heading each, and
+     the heading is there even when a section is alone, so the reader always
+     knows which question the text under it answers. Same type as the header's
+     selector labels, for the same reason: it is a label, not content. */
+  /* `.dsec`, NOT `.psec` — that name was already taken by the detail panel's
+     own sub-label ("variant summary", "strand balance", 9px uppercase mono, 8
+     uses in renderVariant). Reusing it made these sections inherit its
+     text-transform, so a title typed "Selected Read" rendered "SELECTED READ".
+     Second time a name already in this file has been quietly reused; grep
+     first. `.dsec` is the top-level section, `.psec` the labels inside one. */
+  .dsec{border-top:1px solid var(--border);padding-top:12px;margin-top:12px}
+  .dsec:first-child{border-top:none;padding-top:0;margin-top:0}
+  .subhead{font:600 12px system-ui;letter-spacing:.2px;text-transform:none;
+    color:var(--picklabel);margin-bottom:8px}
   .bar{height:5px;border-radius:3px;background:#20252e;overflow:hidden;margin:3px 0 8px}
   .bar i{display:block;height:100%}
   .verdict{border-radius:7px;padding:7px 9px;margin:8px 0;font-size:11px;line-height:1.5;
@@ -270,7 +325,14 @@
 
   /* detail-panel collapse tab, pinned to the pane edge */
 
-  .modesw{display:flex;z-index:6;border:1px solid var(--rule);
+  /* BORDERLESS, deliberately. This read `border:1px solid var(--rule)` for as
+     long as it has existed, and `--rule` was never defined — so the whole
+     declaration was invalid, the browser dropped it, and the switches have
+     always drawn without a frame. Defining `--rule` elsewhere in the sheet
+     instantly put a box around both selectors, which is how the dead rule was
+     found. Written as `border:0` so the next variable named `rule` cannot
+     resurrect it. */
+  .modesw{display:flex;z-index:6;border:0;
     border-radius:5px;overflow:hidden;background:var(--surface);font-size:10px;
     font-family:ui-monospace,monospace}
   .modesw button{border:0;background:transparent;color:var(--dim);padding:1px 6px;
@@ -283,11 +345,12 @@
   /* Set apart from the viewer selector rather than butted against it: they are
      two different questions, and a single run of buttons reads as one control. */
   #vvpick{margin-left:18px}
-  .modepick-label{font:9px system-ui;letter-spacing:.9px;text-transform:uppercase;
-    color:var(--dim)}
+  /* The two most consequential controls in the app deserve a label that is
+     read, not one that recedes. --dim put them below the buttons they name. */
+  .modepick-label{font:600 9px system-ui;letter-spacing:.9px;text-transform:uppercase;
+    color:var(--picklabel)}
   .modesw.big button{font-size:11px;padding:3px 12px;line-height:1.5}
   .modesw.big button.on{background:var(--accent);color:var(--bg);font-weight:600}
-  .modesw.big{border-color:var(--dim)}
   #modeL{position:absolute;left:6px}
   /* The canvas copy is absolutely placed over the names header. The header-bar
      copy is in normal flow: the recurrence track and the reference row are both
@@ -346,8 +409,14 @@
   </div>
   <div class="modepick" id="vvpick">
     <span class="modepick-label">variant view</span>
-    <div id="vvR" class="modesw big" title="Which calls are shown: every call above the filters, or only what reached the sample's consensus"><button data-vv="lowfreq">low frequency</button
-      ><button data-vv="consensus">consensus</button></div>
+    <!-- The third option is not a third answer to "which calls" — it is the
+         answer "none of them, show me the reads". It sits on this axis anyway
+         because that is where a reader goes to change what a cell means, and
+         because it is the same question one step further down: the table, the
+         consensus, then the evidence underneath both. -->
+    <div id="vvR" class="modesw big" title="Which calls are shown: every call above the filters, only what reached the sample's consensus, or the aligned reads themselves"><button data-vv="lowfreq">low frequency</button
+      ><button data-vv="consensus">consensus</button
+      ><button data-vv="reads">read pile-up</button></div>
   </div>
   <div class="hgroup right"><div class="stat" id="stats">—</div></div>
   <div class="tools">
@@ -370,6 +439,81 @@
       <div class="note" id="found" style="margin-top:8px">Point at a Flumina output
 directory — the one containing
 variant_analysis/ and vcf_files/</div>
+    </div>
+
+    <!-- read pile-up. Placed HIGH, directly under the import block, because it
+         is hidden in every other view and its controls are useless where they
+         cannot be found: buried below the filters it was six sections down a
+         scrolling sidebar, and the row-height slider — the one control that
+         decides whether the stack is legible at all — went unnoticed. -->
+    <div class="sec" id="readsec" hidden>
+      <h4>Read pile-up</h4>
+      <div class="fld"><span>stack cap</span>
+        <select id="readcap" style="flex:1;min-width:0">
+          <option value="4000">4,000 reads — fastest</option>
+          <option value="12000" selected>12,000 reads</option>
+          <option value="40000">40,000 reads — deepest</option>
+        </select></div>
+      <!-- Range matches squareReadRowH's clamp, so a zoom can never drive the
+           row height somewhere the slider cannot follow it back. -->
+      <div class="fld"><span>row height</span>
+        <input type="range" id="readrh" min="3" max="28" step="1" value="8">
+        <span class="val" id="vreadrh">8</span></div>
+      <div class="fld"><label><input type="checkbox" id="readstrand" checked>
+        shade by strand</label></div>
+      <div class="fld"><label><input type="checkbox" id="readclips">
+        show soft-clipped tails</label></div>
+      <div class="fld"><label><input type="checkbox" id="readqual">
+        colour by base quality</label></div>
+      <!-- What the marks on a read MEAN depends on the alphabet, and the two
+           are not the same set: every base disagreement against only those that
+           change the residue. Saying it once for both would be saying it
+           wrongly for one. -->
+      <div id="readntkey">
+        <!-- Same NT_COL the mismatches are painted from, for the same reason the
+             nucleotides key is: a legend written out by hand drifts. -->
+        <div class="lramp" id="readramp" style="height:14px;margin-top:6px">
+          <div></div><div></div><div></div><div></div>
+        </div>
+        <div class="lticks"><span>A</span><span>C</span><span>G</span><span>T</span></div>
+        <div class="note" style="margin-top:6px">Only bases that DISAGREE with the
+reference are painted; a read that matches is body colour all the way across.
+Mismatches fade with base quality — a pale mark is a low-BQ disagreement, and
+the tooltip carries the number.</div>
+        <div class="lticks" style="margin-top:6px">
+          <span style="color:var(--dim)">&#9644; deletion</span>
+          <span style="color:var(--ins)">&#9612; insertion</span>
+          <span style="color:var(--warn)">&#9644; soft clip</span></div>
+        <div class="note" style="margin-top:4px">A deletion opens a gap in the
+read with a rule through it; an insertion is a narrow upright tick between two
+bases, since it occupies no reference position of its own.</div>
+      </div>
+      <div id="readqualkey" hidden>
+        <div class="lticks" style="margin-top:6px">
+          <span style="color:var(--qGood)">&ge;30 good</span>
+          <span style="color:var(--qOk)">20&ndash;29 ok</span>
+          <span style="color:var(--qBad)">&lt;20 poor</span></div>
+        <div class="note" style="margin-top:4px">Phred bands, painted along each
+read in place of the strand shade. Quality declines toward the 3&prime; end, so a
+read that is orange at one edge is normal; one that is orange under a variant is
+not. The lit read keeps its highlight.</div>
+      </div>
+      <div id="readaakey" hidden>
+        <div class="note" style="margin-top:6px">Marks are whole CODONS whose
+translated residue disagrees with the reference protein, in this product's
+frame — so a read carrying only synonymous changes draws clean, and the marks
+that remain are the ones the rest of this app calls nonsynonymous. Coloured by
+the residue scheme, faded by the worst base quality in the codon. A read that
+does not span all three bases of a codon is not translated.</div>
+      </div>
+      <div class="note" id="readnote" style="margin-top:6px"> </div>
+      <!-- The one thing a sampled pileup must never let a reader do is count off
+           the screen. Said here, beside the control that sets the rate. -->
+      <div class="note" style="margin-top:6px"><b>The stack is a sample; the
+numbers are not.</b> Above the cap the reads are thinned to every n-th in
+coordinate order, and the ratio is stated in the gutter. Depth, allele counts
+and every figure in the panel come from the full pass over the segment, not
+from what is drawn.</div>
     </div>
 
     <!-- 2 · colour. The ramp selector lives with the legend it controls, rather
@@ -472,6 +616,17 @@ the changed base's colour.</div>
         <button id="preset-save">Save as…</button>
         <button id="preset-del">Delete</button>
       </div>
+      <div class="rowbtns" style="margin-top:6px">
+        <button id="layout-reset">Reset layout</button>
+      </div>
+      <!-- Says what it does NOT touch, because a reset button beside a filter
+           panel is otherwise a thing you have to try to find out. And it names
+           the browser's own zoom, which this cannot reach and which is the more
+           likely reason everything looks small. -->
+      <div class="note" style="margin-top:5px">Pane widths, column widths and the
+zoom, back to defaults. Filters, QC overrides and the theme are left alone.
+Browser page zoom is separate — <b>⌘0</b> in Safari restores that, and Safari
+remembers it per site until you do.</div>
       <div class="note" id="presetnote" style="margin-top:6px"></div>
     </div>
 
@@ -546,6 +701,26 @@ the changed base's colour.</div>
         </select></div>
       <div class="fld"><label><input type="checkbox" id="cthin"> mark thin coverage</label></div>
       <div class="note" id="consnote"> </div>
+    </div>
+
+    <!-- 6c · the expanded band, in the two views that draw one.
+         `showPile` was a bare `let` with no way to reach it: the depth profile
+         took the first-click slot the pileup used to hold, so the residue
+         distributions behind it had been unreachable from the UI since. This is
+         the control that item asked for. It is a SELECT rather than a checkbox
+         because the two contents answer different questions from different
+         files — IRMA's coverage tables against the BWA BAM — and a checkbox
+         labelled "pileup" would not say that. -->
+    <div class="sec" id="bandsec" hidden>
+      <h4>Expanded band</h4>
+      <div class="fld"><span>shows</span>
+        <select id="bandmode" style="flex:1;min-width:0">
+          <option value="depth">depth profile — IRMA coverage</option>
+          <option value="pile">residue mix — BWA reads</option>
+        </select></div>
+      <div class="note">Click a sample name to open its band. The depth profile
+needs no BAM and works on every run; the residue mix reads the BAM and needs at
+least 3&thinsp;px per codon. For the reads themselves, use the read pile-up view.</div>
     </div>
 
     <!-- 7 · samples. Sliders first, then the checkboxes that act on them. -->
@@ -698,7 +873,18 @@ const THEMES={
            the band. The droplines are deliberately NOT consDiff: against a band
            full of blue coverage bars a blue line disappears, which is the one
            thing it exists not to do. */
-        expRow:'rgba(255,255,255,.085)',dropLine:'#5fd95f'},
+        expRow:'rgba(255,255,255,.085)',dropLine:'#5fd95f',
+        /* Read pileup. The read BODY is deliberately the quietest thing in the
+           view: a stack of several hundred reads is a texture, and the only
+           marks meant to survive being scanned at a glance are the mismatched
+           bases painted over it in NT_COL. Forward and reverse differ by a
+           shade rather than a hue, for the same reason — strand is context,
+           not a finding, and two hues would compete with the bases. */
+        readFwd:'#4a566b',readRev:'#2b3340',readEdge:'#0b0e13',readOutline:'#7d8899',readHot:'#93a5c9',readLane:'rgba(255,255,255,.030)',selBand:'rgba(122,162,247,.22)',qGood:'#4caf6a',qOk:'#d8b63f',qBad:'#e08a3c',
+        readDel:'#8b949e',readIns:'#c060c0',readClip:'rgba(250,178,25,.42)',
+        covBar:'rgba(157,197,244,.55)',covBg:'rgba(255,255,255,.03)',
+        readsBg:'#0b0e13',scrollTrack:'rgba(255,255,255,.05)',
+        scrollThumb:'rgba(255,255,255,.22)'},
   light:{surface:'#fcfcfb',pane:'#f2f2ef',trackBg:'#eeeeea',rule:'#dcdcd5',
          tick:'#c8c8c0',bound:'#a8a89e',boundSec:'#c9a86a',ink:'#3a3a36',
          dim:'#8a8a82',label:'#5a5a54',glyphInk:'#fcfcfb',refBg:'#e7e7e2',
@@ -708,7 +894,12 @@ const THEMES={
          trackTop:'rgba(42,120,214,.75)',trackBot:'rgba(42,120,214,.08)',
          qcPass:'#7aa87a',qcPassOn:'#0a7a0a',qcFail:'#c99a9a',qcFailOn:'#b02525',rowSel:'rgba(42,120,214,.11)',panelBg:'#f2f2ef',fmMark:'#0a7a5a',consSame:'rgba(0,0,0,.10)',consDiff:'#2a78d6',pileBg:'#e9e9e4',pileRef:'rgba(0,0,0,.18)',
          consGap:'rgba(0,0,0,.035)',consAmb:'#9a7020',consThin:'#b8790a',
-         expRow:'rgba(0,0,0,.075)',dropLine:'#128a12'}
+         expRow:'rgba(0,0,0,.075)',dropLine:'#128a12',
+         readFwd:'#cbcbc3',readRev:'#9d9d94',readEdge:'#f4f4f0',readOutline:'#5f5f57',readHot:'#adbfdd',readLane:'rgba(0,0,0,.032)',selBand:'rgba(42,120,214,.20)',qGood:'#2f8f4a',qOk:'#b08a1a',qBad:'#c26a1c',
+         readDel:'#8a8a82',readIns:'#9a3a9a',readClip:'rgba(184,121,10,.38)',
+         covBar:'rgba(42,120,214,.45)',covBg:'rgba(0,0,0,.035)',
+         readsBg:'#f4f4f0',scrollTrack:'rgba(0,0,0,.06)',
+         scrollThumb:'rgba(0,0,0,.24)'}
 };
 let themeName='dark', rampName='blue';
 let TH=THEMES.dark;
@@ -876,6 +1067,11 @@ let refProt=null;
 /* product -> spliced reference CDS. Nucleotides mode's reference row. Declared
    with the rest of the state, above every use. */
 let refCDS=new Map();
+/* segment -> the WHOLE reference sequence, in reference coordinates, keyed by
+   shortLocus. refCDS is spliced per product and cannot answer "what is the
+   reference base at reference position p" — which is the only question a read
+   mismatch asks. Filled from the same FASTA parse; no extra read. */
+let refSeq=new Map();
 /* Nucleotide colours. Deliberately NOT the semantic palette (--good, --warn,
    --bad): those mean "verdict" everywhere else in this app, and a base is not a
    verdict. Mid-tone so one set works on both surfaces. */
@@ -1069,6 +1265,11 @@ async function readReferenceProteins(gtf){
   }
   if(nm) seqs.set(nm,buf.join(''));
   if(!seqs.size) return null;
+  // Keep the raw segments too. The read pileup compares each aligned base with
+  // the reference at its own position, and UTR bases have no product to belong
+  // to — refCDS cannot answer there and would silently draw a mismatch-free
+  // read. Both keys, because a BAM's reference names need not match the FASTA's.
+  for(const [k,v] of seqs){ refSeq.set(k,v); refSeq.set(shortLocus(k),v); }
 
   const prot=new Map();
   for(const [g,rec] of gtf.cds){
@@ -2195,23 +2396,75 @@ function markerSupport(sample, marker){
    during development. It fakes the same `files` map the directory picker
    builds, with entries whose .text() fetches on demand — so every code path
    below is the real one. Under file:// nothing here runs. */
+/* The load overlay, driven from OUTSIDE loadRun.
+   loadRun's phase() only starts once every file has been found, and finding
+   them is the long part: the dev path lists BAM_files, IRMA_results and
+   vcf_files per sample and HEAD-probes four BAM paths each — about 800 round
+   trips on this run, all of it before the first phase() fires. So the screen
+   sat blank and the bar appeared, filled and vanished in the last second, which
+   reads as a hang followed by a flicker rather than as progress.
+
+   Discovery owns 0-25% of the bar and the named phases own 25-100%, so it only
+   ever moves forward. */
+function loadShow(name,sub,pct){
+  const el=document.getElementById('loading'); if(!el) return;
+  el.classList.add('on');
+  const n=document.getElementById('loadname'), f=document.getElementById('loadphase'),
+        b=document.querySelector('#loadbar i');
+  if(n&&name!=null) n.textContent=name;
+  if(f&&sub!=null)  f.textContent=sub;
+  if(b&&pct!=null)  b.style.width=Math.max(0,Math.min(100,pct)).toFixed(1)+'%';
+}
+function loadHide(){
+  const el=document.getElementById('loading'); if(!el) return;
+  const b=document.querySelector('#loadbar i'); if(b) b.style.width='100%';
+  el.classList.remove('on');
+}
 async function devBootstrap(root='run'){
+  /* Discovery progress. Stage fractions are rough shares of the round trips,
+     not a measurement — the point is that the bar keeps moving and the line
+     underneath names what is being walked. */
+  const disc=(sub,frac)=>loadShow('finding the run\u2019s files', sub,
+                                  2+23*Math.max(0,Math.min(1,frac)));
+  disc('listing the run directory\u2026',0);
+  /* The whole body of the last file a server answered a ranged request for with
+     a plain 200. `python3 -m http.server` does not implement Range at all: it
+     returns the entire file however few bytes were asked for. Discarding all
+     but the slice — which is what this did — turns one segment scan into one
+     whole-BAM download PER 8 MB WINDOW. Measured on this run: MC-559 is 30 MB
+     and costs ~120 MB, MC-495 is 197 MB and costs about 5 GB, which is where
+     the fetch gives up and the pile-up reports "TypeError: Load failed".
+
+     So keep it. One file at a time, replaced when a different one is asked for,
+     which bounds the cost at the size of the largest BAM. A server that honours
+     Range never fills this and nothing changes for the picker or the Tauri
+     shell, both of which slice for real. */
+  let whole=null;                       // {url, bytes}
+  const reach=async(url,init)=>{
+    try{ return await fetch(url,init); }
+    catch(e){
+      // A dead dev server surfaces as a bare TypeError ("Load failed" in
+      // WebKit, "Failed to fetch" in Chrome) with no clue which URL or why.
+      throw new Error('cannot reach the dev server for '+url+
+                      ' — is it still running? ('+(e&&e.message||e)+')');
+    }
+  };
   const shim=url=>({
-    text:()=>fetch(url,{cache:'no-store'}).then(r=>{ if(!r.ok) throw new Error(r.status); return r.text(); }),
+    text:()=>reach(url,{cache:'no-store'}).then(r=>{ if(!r.ok) throw new Error(r.status); return r.text(); }),
     // ranged read, so a BAM query pulls tens of KB instead of 200 MB
     bytes:async(a,b)=>{
-      const r=await fetch(url,{cache:'no-store',headers:{Range:`bytes=${a}-${b-1}`}});
+      if(whole&&whole.url===url) return whole.bytes.subarray(a,b);
+      const r=await reach(url,{cache:'no-store',headers:{Range:`bytes=${a}-${b-1}`}});
       if(!r.ok) throw new Error(url+' -> '+r.status);
       const buf=new Uint8Array(await r.arrayBuffer());
       if(r.status===206) return buf;
-      // Server ignored Range and sent the whole file. Correct, but the point
-      // was to avoid exactly that — say so once rather than silently crawling.
       if(!window.__rangeWarned){ window.__rangeWarned=1;
-        console.warn('dev server ignored Range; BAM reads will be slow'); }
+        console.warn('dev server ignored Range; whole files will be cached instead'); }
+      whole={url,bytes:buf};
       return buf.subarray(a,b);
     },
     size:async()=>{
-      const r=await fetch(url,{method:'HEAD',cache:'no-store'});
+      const r=await reach(url,{method:'HEAD',cache:'no-store'});
       return +r.headers.get('Content-Length')||0;
     }});
   /* Static hosts serve no directory index — GitHub Pages among them — so the
@@ -2284,7 +2537,8 @@ async function devBootstrap(root='run'){
   for(const p of probe){
     try{ const r=await fetch(`${root}/${p}`,{method:'HEAD',cache:'no-store'}); if(r.ok) m.set(p,shim(`${root}/${p}`)); }catch(e){}
   }
-  if(!m.has('variant_analysis/all_sample_amino_acids.txt')) return false;
+  if(!m.has('variant_analysis/all_sample_amino_acids.txt')){ loadHide(); return false; }
+  disc('reference GTF and depth profiles\u2026',0.15);
   for(const g of await listDir('reference_gtf'))
     if(g.endsWith('.gtf')) m.set('reference_gtf/'+g, shim(`${root}/reference_gtf/${g}`));
   /* Per-sample depth from DEPTH_PROFILE. Listed rather than probed by name
@@ -2307,10 +2561,14 @@ async function devBootstrap(root='run'){
   }
   // A run may carry several per-sample VCF directories (vcf_files/,
   // vcf_files_merged/, ...); register every one, exactly as the picker would.
+  disc('caller output\u2026',0.3);
   const vcfDirs=(await listDir('')).map(x=>x.replace(/\/$/,''))
                                    .filter(x=>/^vcf_files/.test(x));
   for(const dir of (vcfDirs.length?vcfDirs:['vcf_files'])){
-    for(const sdir of await listDir(dir)){
+    const sdirs=await listDir(dir); let done=0;
+    for(const sdir of sdirs){
+      if(!(done++ % 20)) disc(`${dir} \u2014 ${done} of ${sdirs.length}`,
+                              0.3+0.2*(done/Math.max(1,sdirs.length)));
       const name=sdir.replace(/\/$/,'');
       if(!name||name.includes('.')) continue;
       for(const leaf of ['lofreq-called-variants.vcf','ivar-called-variants.tsv',
@@ -2323,8 +2581,12 @@ async function devBootstrap(root='run'){
   // per-sample IRMA read counts. Registered without a HEAD probe, like the VCFs
   // above — 143 probes costs a round trip each and the loader already treats a
   // missing file as "no data for this sample".
+  disc('IRMA tables\u2026',0.5);
   for(const dir of (await listDir('')).map(x=>x.replace(/\/$/,'')).filter(x=>/^IRMA_results/.test(x))){
-    for(const sdir of await listDir(dir)){
+    const sdirs=await listDir(dir); let done=0;
+    for(const sdir of sdirs){
+      if(!(done++ % 10)) disc(`${dir} \u2014 ${done} of ${sdirs.length}`,
+                              0.5+0.25*(done/Math.max(1,sdirs.length)));
       const name=sdir.replace(/\/$/,'');
       if(!name||name.includes('.')) continue;
       const p=`${dir}/${name}/tables/READ_COUNTS.txt`;
@@ -2342,8 +2604,12 @@ async function devBootstrap(root='run'){
     }
   }
   // per-sample BAMs, for the pileup. Registered the same way the picker would.
+  disc('BAM files\u2026',0.75);
   for(const dir of (await listDir('')).map(x=>x.replace(/\/$/,'')).filter(x=>/^BAM_files/.test(x))){
-    for(const sdir of await listDir(dir)){
+    const sdirs=await listDir(dir); let done=0;
+    for(const sdir of sdirs){
+      if(!(done++ % 5)) disc(`${dir} \u2014 ${done} of ${sdirs.length}`,
+                             0.75+0.25*(done/Math.max(1,sdirs.length)));
       const name=sdir.replace(/\/$/,'');
       if(!name||name.includes('.')) continue;
       for(const leaf of ['final_mapped_reads.bam','final_mapped_reads.bai',
@@ -2363,7 +2629,12 @@ async function devBootstrap(root='run'){
 
 /* ---- open ------------------------------------------------------------------ */
 async function openRun(list){
+  // Up before indexFiles, which walks every path the picker handed over — on
+  // this run about 100,000 of them — with nothing on screen while it does.
+  loadShow('reading the folder', `${list.length.toLocaleString()} files`, 4);
+  await new Promise(r=>setTimeout(r,0));      // let the overlay paint first
   indexFiles(list);
+  loadShow('reading the folder','indexed',18);
   await loadRun();
 }
 
@@ -2372,6 +2643,7 @@ async function loadRun(){
   const fnd=document.getElementById('found');
   if(!aaF){
     fnd.innerHTML='<span class="bad">variant_analysis/all_sample_amino_acids.txt not found</span>\nIs this a Flumina output directory?';
+    loadHide();          // discovery may have raised the overlay before this
     return;
   }
   setChip('reading run…');
@@ -2401,7 +2673,9 @@ async function loadRun(){
       el.classList.add('on');
       document.getElementById('loadname').textContent=name;
       document.getElementById('loadphase').textContent=`step ${step+1} of ${STEPS.length}`;
-      document.querySelector('#loadbar i').style.width=(100*step/STEPS.length).toFixed(0)+'%';
+      // 25 onward: discovery already owned everything below it, and a bar that
+      // jumps back to zero halfway through a load is worse than no bar.
+      document.querySelector('#loadbar i').style.width=(25+75*step/STEPS.length).toFixed(0)+'%';
     }
     step++;
     await paint();
@@ -2426,6 +2700,13 @@ async function loadRun(){
     reconcileFrequencies();
     await phase('translating reference proteins');
     refCDS=new Map();          // per run, not accumulated across runs
+    refSeq=new Map();
+    // Everything keyed on this run's coordinates or its BAMs. prodMapCache in
+    // particular is keyed by product NAME, which the next run will reuse with
+    // different exons — a stale entry there would place reads by the old GTF.
+    prodMapCache.clear(); readScan.clear(); readPending.clear();
+    readsSample=null; readScroll=0; readErr=null; readProg=null;
+    selRead=null; hoverRead=null;
     refProt=await readReferenceProteins(gtf);
     /* Keep the RAW reference names. Everything else in the app uses shortLocus()
        (A_HA_H3 -> HA), which strips exactly the suffix the subtype check needs. */
@@ -3433,7 +3714,11 @@ function drawExpandedBand(bx,by,bw,rh,expH,expPos,c0,c1){
           if(aa===ref) continue;
           const h=Math.min(H-acc, Math.max(2, frac*H));
           if(h<=0) break;
-          ctx.fillStyle=aaColour(AAIDX.get(aa))||TH.consDiff;
+          // aaColour takes the LETTER — AA_SCHEMES is keyed A:, R:, N: … — and was
+        // being handed AAIDX's integer, so `s[14]` was undefined and every
+        // residue fell through to the scheme's unknown-residue grey. Measured:
+        // 1,169 marks, 1,169 of them #9a9a94.
+        ctx.fillStyle=aaColour(aa)||TH.consDiff;
           ctx.fillRect(x, y+3+acc, w, h);
           acc+=h;
         }
@@ -3623,6 +3908,649 @@ function drawNucleotides(bx,by,bw,bh,c0,c1,r0,r1,rh,expH,expPos){
   window.__ntDrawn=n;
   // the expanded sample's depth band, same as the consensus view
   if(expPos>=0&&expH>0) drawExpandedBand(bx,by,bw,rh,expH,expPos,c0,c1);
+}
+
+/* ---- the read pile-up view ------------------------------------------------
+   Three fixed strips under the header, and only the third scrolls:
+
+     focus row   the chosen sample's own calls, where its matrix row used to be
+     coverage    exact depth from the full pass, alleles coloured above the
+                 reader's own min-frequency threshold
+     stack       the reads, first-fit packed, scrolled vertically on its own
+
+   The header above (recurrence track, ruler, reference row) is untouched, which
+   is the point: the reference the reads are being compared against stays where
+   it has always been, and the column arithmetic is the same one every other
+   view uses. A base is a third of a codon, so nothing here needs its own
+   coordinate system — only its own vertical scroll. */
+const READ_FOCUS_H=20, READ_COV_H=64, READ_PAD=6, READ_SB_W=9;
+function readStackTop(){ return topH()+READ_FOCUS_H+READ_COV_H+READ_PAD; }
+function readStackH(){ return Math.max(30, cssH-readStackTop()); }
+let readRowsN=0;               // packed rows across the segments in view
+let readBlocks=[];             // per-product draw geometry, kept for hit-testing
+
+/* Start (or find) the scans for the segments on screen. Returns the ones that
+   are ready; the rest paint as progress and re-enter on the next frame. */
+function ensureReadScans(c0,c1){
+  const out=new Map();
+  if(readsSample===null||cw<READS_MIN_CW) return out;
+  const sample=names[readsSample];
+  if(!hasBAM(sample)) return out;
+  /* Segments of VISIBLE products only. segsInView ignores the product toggles —
+     correct for the codon pileup, which is per column — but here a segment
+     whose products are all switched off would cost a multi-second scan for
+     something the draw loop then skips. */
+  const want=new Set();
+  for(const pr of products){
+    if(pr.off+pr.aa<=c0||pr.off>=c1||hidden.has(pr.product)) continue;
+    want.add(pr.segment);
+    if(want.size>=READ_MAX_SEGS) break;
+  }
+  for(const seg of want){
+    const key=readsKey(sample,seg);
+    // A cached null is "asked and answered, nothing there" — skip it, do not
+    // put it in `out`, and above all do not start the scan again.
+    if(readScan.has(key)){ const S=readScan.get(key); if(S) out.set(seg,S); continue; }
+    if(!readPending.has(key))
+      bamReadsSegment(sample,seg)
+        .then(()=>{ readErr=null; schedule(); })
+        .catch(e=>{ readScan.set(key,null); readErr=String(e); readProg=null; schedule(); });
+  }
+  return out;
+}
+// CDS base index -> 1-based reference position. Inverse of idxOfRef; both are
+// exon walks because the spliced products are the reason either exists.
+function refOfIdx(ex,j){
+  for(const e of ex){ const len=e.e-e.s+1; if(j>=e.off&&j<e.off+len) return e.s+(j-e.off); }
+  return -1;
+}
+// Every rect a reference span [a,b] (1-based, inclusive) occupies in one
+// product's column block. More than one only where an exon boundary falls
+// inside the span, which is exactly where a read crosses a splice junction.
+function readSpanRects(B,a,b,cb){
+  const w3=cw/3;
+  for(const e of B.ex){
+    const s=Math.max(a,e.s), t=Math.min(b,e.e);
+    if(s>t) continue;
+    const j0=e.off+(s-e.s), j1=e.off+(t-e.s);
+    cb(B.xBase+j0*w3, (j1-j0+1)*w3);
+  }
+}
+
+function drawReads(bx,by,bw,bh,c0,c1){
+  const sample=names[readsSample];
+  const w3=cw/3;
+  ctx.save(); ctx.beginPath(); ctx.rect(bx,by,bw,bh); ctx.clip();
+
+  /* ---- focus row. Painted from `cls`/`vidx`, the FILTERED grid, because this
+     is the sample's low-frequency row lifted out of the matrix and it has to
+     keep meaning what it meant up there. */
+  const fy=by;
+  ctx.fillStyle=TH.expRow; ctx.fillRect(bx,fy,bw,READ_FOCUS_H);
+  if(cls&&vidx){
+    const base=readsSample*NC;
+    ctx.font='bold '+Math.min(13,Math.max(8,Math.floor(cw*0.62)))+'px ui-monospace,monospace';
+    ctx.textAlign='center';
+    /* The focus row follows the alphabet too. In bases it marks the THIRD that
+       changed, in the base's own colour — the same rule drawNucleotides uses —
+       because a codon-wide mark above a stack of per-base marks points at three
+       bases when only one moved. */
+    const nt=ntAlphabet()&&cw>=3, w3f=cw/3;
+    for(let c=c0;c<c1;c++){
+      const b=cls[base+c]; if(!b) continue;
+      const x=bx+(c-scrollCol)*cw, vi=vidx[base+c];
+      if(nt){
+        const rc=vi>=0?V.refcod[vi]:null, ac=vi>=0?V.altcod[vi]:null;
+        if(rc&&ac){
+          for(let k=0;k<3;k++){
+            if(rc[k]===ac[k]) continue;
+            ctx.fillStyle=NT_COL[ac[k]]||TH.consDiff;
+            ctx.fillRect(x+k*w3f,fy+2,Math.max(2,w3f),READ_FOCUS_H-4);
+            if(w3f>=9){ ctx.fillStyle=TH.glyphInk;
+                        ctx.fillText(ac[k],x+k*w3f+w3f/2,fy+READ_FOCUS_H/2+4); }
+          }
+          continue;
+        }
+        // no codon pair on the call — fall through to the frequency mark rather
+        // than drawing nothing where the matrix would have drawn something
+      }
+      ctx.fillStyle=FILL[b];
+      ctx.fillRect(x,fy+2,Math.max(2,cw),READ_FOCUS_H-4);
+      if(cw>=9){
+        const a=vi>=0?V.alt[vi]:255;
+        if(a!==255){ ctx.fillStyle=inkRow[b]?INK_LIGHT:INK_DARK;
+                     ctx.fillText(AAS[a],x+cw/2,fy+READ_FOCUS_H/2+4); }
+      }
+    }
+    ctx.textAlign='left';
+    if(selVariant!==null&&V.row[selVariant]===readsSample){
+      const c=V.col[selVariant], x=bx+(c-scrollCol)*cw;
+      // The ring has to agree with the band running down the stack beneath it:
+      // three bases ringed while one is banded reads as two selections.
+      const rx=x+(ntSel()?selNt*(cw/3):0);
+      const rw=ntSel()?Math.max(3,cw/3):Math.max(3,cw);
+      ctx.strokeStyle=TH.selRing; ctx.lineWidth=1.5;
+      ctx.strokeRect(rx-1,fy+1,rw+2,READ_FOCUS_H-2);
+      ctx.lineWidth=1;
+    }
+  }
+  ctx.strokeStyle=TH.rule; ctx.beginPath();
+  ctx.moveTo(bx,fy+READ_FOCUS_H-.5); ctx.lineTo(bx+bw,fy+READ_FOCUS_H-.5); ctx.stroke();
+
+  const sy=readStackTop(), sh=readStackH();
+  ctx.fillStyle=TH.readsBg; ctx.fillRect(bx,by+READ_FOCUS_H,bw,bh-READ_FOCUS_H);
+  const msg=t=>{ ctx.fillStyle=TH.dim; ctx.font='11px ui-monospace,monospace';
+                 ctx.textAlign='left'; ctx.fillText(t,bx+10,sy+22); };
+
+  readBlocks=[]; readRowsN=0; window.__readMaxD=0; window.__readSB=null;
+  if(cw<READS_MIN_CW){
+    msg('zoom in past '+READS_MIN_CW+' px per codon — below one pixel per base there is no pileup to draw');
+    ctx.restore(); return;
+  }
+  if(!hasBAM(sample)){
+    msg('no BAM for '+sample+' in this folder — the pile-up reads BAM_files/<sample>/final_mapped_reads.bam');
+    ctx.restore(); return;
+  }
+  const scans=ensureReadScans(c0,c1);
+  if(readErr) msg('pile-up failed: '+readErr);
+  else if(!scans.size)
+    msg(readProg ? 'reading '+readProg.seg+' — '+Math.round(readProg.frac*100)+'%'
+                 : 'reading the BAM…');
+
+  // geometry per visible product, shared by the coverage strip, the stack and
+  // the hit test — one place, so a click cannot land somewhere nothing was drawn
+  for(const pr of products){
+    if(pr.off+pr.aa<=c0||pr.off>=c1) continue;
+    if(hidden.has(pr.product)) continue;
+    const S=scans.get(pr.segment); if(!S) continue;
+    const ex=prodExons(pr.product); if(!ex||!ex.length) continue;
+    const last=ex[ex.length-1], cdsLen=last.off+(last.e-last.s+1);
+    const xBase=bx+(pr.off-scrollCol)*cw;
+    const j0=Math.max(0,Math.floor((bx-xBase)/w3));
+    const j1=Math.min(cdsLen-1,Math.ceil((bx+bw-xBase)/w3));
+    if(j1<j0) continue;
+    readBlocks.push({pr,S,ex,cdsLen,xBase,j0,j1,
+                     refLo:refOfIdx(ex,j0),refHi:refOfIdx(ex,j1)});
+    if(S.rows.length>readRowsN) readRowsN=S.rows.length;
+  }
+  /* Scanned, but nothing to lay the reads on. The GTF is the only thing that
+     can place a reference position in a column block, so a product without one
+     has reads and nowhere to draw them — which is a different state from a
+     segment with no reads and must not look the same. */
+  if(scans.size&&!readBlocks.length&&!readProg)
+    msg('reads loaded, but no product in view has CDS coordinates to place them on');
+
+  /* ---- coverage. Exact — every read that passed the filters, not the sampled
+     stack below it. Alleles are coloured at the reader's OWN min-frequency
+     setting rather than at a threshold invented here, so the strip and the
+     matrix agree about what counts as present. */
+  const cy=by+READ_FOCUS_H, cvh=READ_COV_H-6;
+  ctx.fillStyle=TH.covBg; ctx.fillRect(bx,cy,bw,READ_COV_H);
+  let maxD=0;
+  for(const B of readBlocks)
+    for(let j=B.j0;j<=B.j1;j++){
+      const p=refOfIdx(B.ex,j); if(p<1||p>B.S.L) continue;
+      const o=(p-1)*5, c=B.S.cnt;
+      const d=c[o]+c[o+1]+c[o+2]+c[o+3]+c[o+4]+B.S.del[p-1];
+      if(d>maxD) maxD=d;
+    }
+  window.__readMaxD=maxD;
+  const covThr=Math.max(0.01,(+document.getElementById('ffreq').value||0)/100);
+  window.__readCovThr=covThr;
+  if(maxD>0){
+    const bwpx=Math.max(1,w3-(w3>3?0.5:0));
+    for(const B of readBlocks){
+      const ref=B.S.ref;
+      for(let j=B.j0;j<=B.j1;j++){
+        const p=refOfIdx(B.ex,j); if(p<1||p>B.S.L) continue;
+        const o=(p-1)*5, cn=B.S.cnt;
+        const tot=cn[o]+cn[o+1]+cn[o+2]+cn[o+3]+cn[o+4];
+        const d=tot+B.S.del[p-1]; if(!d) continue;
+        const x=B.xBase+j*w3, h=(d/maxD)*cvh, top=cy+cvh-h+3;
+        ctx.fillStyle=TH.covBar; ctx.fillRect(x,top,bwpx,h);
+        if(!tot) continue;
+        const rb=ref?ref[p-1]:null;
+        let acc=0;
+        for(let k=0;k<4;k++){
+          const b='ACGT'[k];
+          if(b===rb||!cn[o+k]) continue;
+          if(cn[o+k]/tot<covThr) continue;
+          const hh=(cn[o+k]/maxD)*cvh;
+          ctx.fillStyle=NT_COL[b];
+          ctx.fillRect(x,top+acc,bwpx,hh);
+          acc+=hh;
+        }
+      }
+    }
+  }
+  ctx.strokeStyle=TH.rule; ctx.beginPath();
+  ctx.moveTo(bx,cy+READ_COV_H-.5); ctx.lineTo(bx+bw,cy+READ_COV_H-.5); ctx.stroke();
+
+  /* ---- the stack */
+  ctx.save(); ctx.beginPath(); ctx.rect(bx,sy,bw,sh); ctx.clip();
+  // product boundaries carried down through the stack, since the ones under the
+  // ruler stop at topH() and a read that crosses a block edge is two frames
+  for(const pr of products){
+    const x0=bx+(pr.off-scrollCol)*cw;
+    if(x0<bx||x0>bx+bw) continue;
+    ctx.strokeStyle=pr.primary?TH.bound:TH.boundSec;
+    ctx.beginPath(); ctx.moveTo(x0,sy); ctx.lineTo(x0,sy+sh); ctx.stroke();
+  }
+  // The selected column is drawn at the END of this function, over the reads
+  // rather than under them — see the note there.
+  clampReadScroll();
+  /* A proportional lane gap, not a fixed 1 px. At 24 px rows a single pixel of
+     air between capsules is not a gap, it is a hairline, and the stack goes
+     back to reading as a solid block — which is the thing the rounding and the
+     edge are here to prevent. */
+  /* The lane gap, and the ONLY place it is taken. One to three pixels: enough
+     to see, never enough to starve the read. The body keeps 75-85% of the row
+     at every height, which is the property the earlier version lost. */
+  const rrh=readRowH;
+  const hgt=Math.max(2, rrh - Math.max(1,Math.min(3,Math.round(rrh*0.2))));
+  const k0=Math.max(0,Math.floor(readScroll));
+  const k1=Math.min(readRowsN,Math.ceil(readScroll+sh/rrh));
+  // The cell is a base in one alphabet and a codon in the other, so the width
+  // that has to hold a glyph is not the same number.
+  const unit = ntAlphabet() ? w3 : cw;
+  const letters = unit>=8 && hgt>=9;
+  if(letters) ctx.font=Math.min(hgt,Math.floor(unit*1.5))+'px ui-monospace,monospace';
+  /* Alternating lane stripe, the same device the sample list uses. A read whose
+     ends are both off-screen has nothing to distinguish it from the read above
+     except the gap between them; banding the lanes makes the rows countable
+     even where every read in view is a middle. Drawn under everything, at the
+     full lane pitch so the stripe includes the gap. */
+  if(rrh>=3){
+    ctx.fillStyle=TH.readLane;
+    for(let k=k0;k<k1;k++){
+      if(k%2) continue;
+      ctx.fillRect(bx,sy+(k-readScroll)*rrh,bw,rrh);
+    }
+  }
+  for(const B of readBlocks){
+    const rows=B.S.rows, ref=B.S.ref;
+    const lo0=B.refLo-1, hi0=B.refHi-1;            // 0-based visible window
+    for(let k=k0;k<k1&&k<rows.length;k++){
+      const y=sy+(k-readScroll)*rrh;
+      for(const r of rows[k]){
+        const a0=readClips?r.pos-r.clipL:r.pos;
+        const b0=readClips?r.end+r.clipR:r.end;
+        if(b0<=lo0||a0>hi0) continue;
+        drawOneRead(B,r,y,hgt,ref,letters,rrh>=3&&!(k%2));
+      }
+    }
+  }
+  ctx.restore();
+
+  /* ---- the side scroll bar. Drawn only when the stack is taller than the
+     area, because a full-length thumb is a control that does nothing. */
+  const totalH=readRowsN*rrh;
+  if(totalH>sh+1){
+    const tw=READ_SB_W, tx=bx+bw-tw-3;
+    ctx.fillStyle=TH.scrollTrack; ctx.fillRect(tx,sy,tw,sh);
+    const th=Math.max(26,sh*(sh/totalH));
+    const span=Math.max(1e-6,readRowsN-sh/rrh);
+    const ty=sy+(readScroll/span)*(sh-th);
+    ctx.fillStyle=TH.scrollThumb;
+    ctx.fillRect(tx+1,ty,tw-2,th);
+    window.__readSB={tx,tw,ty,th,sy,sh,span};
+  } else window.__readSB=null;
+
+  /* ---- the selected column, LAST and over everything.
+     It used to be drawn before the reads, so the reads painted over it and all
+     that survived was a tint in the lane gaps — a highlight you had to hunt
+     for. Over the top it needs A WASH AND NOTHING ELSE — the first version
+     bracketed it with a rule down each edge, which framed the column as a box
+     and competed with the ring on the lit read. The fill alone carries it now
+     that it is no longer buried. Full body height, so the mark runs unbroken
+     through the focus row, the coverage strip and the stack. */
+  if(selCol!==null){
+    const x=bx+(selCol-scrollCol)*cw;
+    const sx=ntSel()?x+selNt*(cw/3):x;
+    const sw=Math.max(1.5,ntSel()?cw/3:cw);
+    if(sx+sw>bx&&sx<bx+bw){ ctx.fillStyle=TH.selBand; ctx.fillRect(sx,by,sw,bh); }
+  }
+  ctx.restore();
+}
+
+/* One read. A body rect per aligned block (two only across a splice), a rule
+   through deletions, a tick at insertions, and the mismatches painted from the
+   list found at scan time. Low-quality mismatches fade rather than vanish —
+   a BQ 12 disagreement is still worth seeing, it is just not worth believing,
+   and the panel carries the number. */
+/* A rounded, outlined capsule, inset half a pixel on every side. Reads in one
+   row are packed READ_GAP bases apart, which is generous at high zoom and a
+   sliver at low — so separation cannot come from the gap alone or the row reads
+   as one continuous bar, which is exactly what it did. The inset and the edge
+   are in PIXELS and so survive any zoom; the rounding is what makes a read look
+   like an object rather than a segment of a rule. */
+/* A read, drawn so it reads as ONE OBJECT. This took three attempts and the
+   first two failed the same way, so the reasoning is worth keeping:
+
+     1. flat butted rects            — "continuous"
+     2. a translucent black stroke   — still one mass, because the stroke
+                                       landed ~10 RGB units from the fill it was
+                                       outlining (`50,57,69` on `60,69,83`)
+     3. a ground-coloured cut        — a gap, but nothing bounding the read
+
+   A gap alone does not do it at the row heights this view actually runs at: 5
+   px rows with a 1 px lane leave the eye nothing to latch onto. What separates
+   is the pair — GROUND either side, then a CONTRASTING RIM around the fill. The
+   inset is in pixels so it survives any zoom, unlike READ_GAP, which is 3
+   bases and shrinks as you zoom out. */
+function readCapsule(x,w,y,h,fill){
+  const ww=Math.max(1.2,w-2);
+  /* The FULL height it was handed, vertically. The caller already took the lane
+     gap out; taking another pixel here was subtracting the gap twice, and at the
+     row height squaring actually produced (4-4.67 px) that left a body ONE PIXEL
+     tall with three quarters of the row as air. Measured, after two rounds of
+     colour work aimed at a problem that was never about colour. Horizontal inset
+     only — that is separation between reads in a lane, a different axis. */
+  const rad=Math.min(h/2,ww/2);
+  ctx.beginPath();
+  if(ctx.roundRect) ctx.roundRect(x+1,y,ww,h,rad);
+  else ctx.rect(x+1,y,ww,h);
+  ctx.fillStyle=fill; ctx.fill();
+  // Below 4 px the rim IS the read, so the ground gap is left to do the work
+  // alone rather than an outline being allowed to swallow its own fill.
+  /* The lit read keeps its rim at any height — it is the one read that has to
+     be traceable across a screen it is three times wider than — but the rim is
+     the ORDINARY one. A near-white ring around it read as a second selection
+     competing with the column band, which is the mark that actually points at
+     something. The lighter fill is enough to say "this read". */
+  if(ctx.__hotRead){ ctx.strokeStyle=TH.readOutline; ctx.lineWidth=1.2; ctx.stroke(); }
+  else if(h>=4&&ww>=3){ ctx.strokeStyle=TH.readOutline; ctx.lineWidth=1; ctx.stroke(); }
+}
+/* One read's codons that translate to a DIFFERENT residue from the reference,
+   in one product's frame. This is what the amino-acid alphabet paints, and it
+   is a genuinely different question from the base mismatches: a read can
+   disagree at a base and agree at the residue, which is most of what the
+   synonymous/nonsynonymous split is about, and in this alphabet those reads
+   must draw clean.
+
+   Derived FROM the base mismatch list rather than by translating the whole
+   read. A codon can only change residue if one of its three bases changed, so
+   the candidates are exactly the codons containing a mismatch — a handful per
+   read instead of fifty. Cached on the read against the product, because a
+   segment's two ORFs read the same bases in different frames. */
+function readAAMiss(B,r){
+  const key=B.pr.product;
+  if(r._aaKey===key) return r._aa;
+  r._aaKey=key; r._aa=null;
+  const cds=refCDS.get(key);
+  if(!cds||!r.mm) return null;
+  const ex=B.ex, out=[], done=new Set();
+  for(let i=0;i<r.mm.length;i+=3){
+    const j=idxOfRef(ex,r.mm[i]+1); if(j<0) continue;
+    const cd=(j/3)|0; if(done.has(cd)) continue; done.add(cd);
+    const st=cd*3; if(st+2>=cds.length) continue;
+    let tri='', q=99, ok=true;
+    for(let k=0;k<3;k++){
+      const p1=refOfIdx(ex,st+k); if(p1<1){ ok=false; break; }
+      const g=storedBaseAt(r,p1-1);
+      // A read that does not span the whole codon cannot be translated, and
+      // guessing the missing base would invent a residue.
+      if(!g||g.b==='-'||g.b==='N'){ ok=false; break; }
+      tri+=g.b; if(g.q!=null&&g.q<q) q=g.q;
+    }
+    if(!ok) continue;
+    const aa=CODONS.get(tri)||'X';
+    if(aa===(CODONS.get(cds.slice(st,st+3))||'X')) continue;   // synonymous
+    out.push(cd, aa.charCodeAt(0), q);
+  }
+  if(out.length) r._aa=Int32Array.from(out);
+  return r._aa;
+}
+function drawOneRead(B,r,y,h,ref,letters,striped){
+  const w3=cw/3;
+  const hot = (r===selRead)||(r===hoverRead);
+  const body = hot ? TH.readHot
+             : readStrand ? ((r.flag&16)?TH.readRev:TH.readFwd) : TH.readFwd;
+  ctx.__hotRead=hot;              // read by readCapsule, which owns the stroke
+  if(readClips){
+    if(r.clipL) readSpanRects(B,r.pos-r.clipL+1,r.pos,(x,w)=>readCapsule(x,w,y,h,TH.readClip));
+    if(r.clipR) readSpanRects(B,r.end+1,r.end+r.clipR,(x,w)=>readCapsule(x,w,y,h,TH.readClip));
+  }
+  /* ONE capsule for the whole aligned extent, not one per CIGAR block. Drawing
+     per block put a rounded cap on both sides of every deletion, so a read with
+     a 3 bp gap looked like two reads — and a deletion is a property OF the read,
+     drawn over it below, not a break in it. */
+  readSpanRects(B,r.pos+1,r.end,(x,w)=>readCapsule(x,w,y,h,body));
+  /* Quality along every read at once, on request. Painted as RUNS of one band,
+     not a rect per base: a read's qualities are strongly autocorrelated — they
+     decline toward the 3' end rather than jumping — so 150 bases collapse to a
+     handful of runs and the cost is nothing like per-base. Clipped to the
+     capsule so the rounded ends survive, which is the only reason this costs a
+     save/restore. Skipped entirely on a lit read: the highlight is the answer
+     to a different question and must not be repainted over. */
+  if(readQual&&!hot&&h>=2&&r.qual&&r.qual.length){
+    const lo=Math.max(r.pos,B.refLo-1), hi=Math.min(r.end,B.refHi);
+    if(hi>lo){
+      ctx.save();
+      ctx.beginPath();
+      readSpanRects(B,r.pos+1,r.end,(x,w)=>{
+        const ww=Math.max(1.2,w-2), rad=Math.min(h/2,ww/2);
+        if(ctx.roundRect) ctx.roundRect(x+1,y,ww,h,rad); else ctx.rect(x+1,y,ww,h);
+      });
+      ctx.clip();
+      /* ONE walk of the CIGAR, not one per base. The obvious version called
+         storedBaseAt per position, and storedBaseAt re-walks the read's CIGAR
+         from the start every time — with the heavy clipping in these BAMs that
+         is a few operations per base, and it cost 17 ms a frame at the dense
+         end. Carrying `qp` alongside `rp` through a single pass turns the same
+         work into an array lookup: 3.7 ms for the same frame, measured. */
+      let runStart=lo, runBand=null;
+      const flush=(end)=>{
+        if(runBand===null||end<=runStart) return;
+        ctx.fillStyle=TH[runBand];
+        readSpanRects(B,runStart+1,end,(x,w)=>ctx.fillRect(x,y,Math.max(1,w),h));
+      };
+      let rp2=r.pos, qp2=0;
+      for(let k=0;k<r.cig.length&&rp2<hi;k++){
+        const v=r.cig[k], ln=v>>4, op=v&15;
+        if(op===0||op===7||op===8){
+          for(let j=0;j<ln;j++){
+            const p=rp2+j; if(p<lo) continue; if(p>=hi) break;
+            const b=qBand(r.qual[qp2+j]);
+            if(b!==runBand){ flush(p); runStart=p; runBand=b; }
+          }
+          rp2+=ln; qp2+=ln;
+        } else if(op===1||op===4){ qp2+=ln; }
+        else if(op===2||op===3){         // a deletion has no base and no quality
+          flush(Math.min(rp2,hi)); runBand=null; rp2+=ln; runStart=rp2;
+        }
+      }
+      flush(Math.min(rp2,hi));
+      ctx.restore();
+    }
+  }
+  let rp=r.pos;
+  for(let k=0;k<r.cig.length;k++){
+    const v=r.cig[k], ln=v>>4, op=v&15;
+    if(op===0||op===7||op===8){ rp+=ln; }
+    else if(op===2||op===3){
+      /* A deletion is a GAP with a rule through it, which is what a deletion
+         looks like everywhere else in genomics. The first version striped the
+         filled body instead — the read stayed solid and a pale grey bar ran
+         along the middle of it, which reads as a mark ON the read rather than
+         as sequence missing FROM it. Reported as "weird grey bars", and fairly.
+         Punched back to the ground, lane stripe included where the lane carries
+         one, so the hole matches its surroundings instead of being a patch. */
+      readSpanRects(B,rp+1,rp+ln,(x,w)=>{
+        const ww=Math.max(1,w);
+        ctx.fillStyle=TH.readsBg; ctx.fillRect(x,y,ww,h);
+        if(striped){ ctx.fillStyle=TH.readLane; ctx.fillRect(x,y,ww,h); }
+        ctx.fillStyle=TH.readDel;
+        ctx.fillRect(x,y+h/2-1,ww,Math.max(1,Math.min(2,h/6)));
+      });
+      rp+=ln;
+    } else if(op===1){
+      const j=idxOfRef(B.ex,rp+1);
+      if(j>=0){ ctx.fillStyle=TH.readIns;
+        ctx.fillRect(B.xBase+j*w3-.5,y,Math.max(1.5,Math.min(3,w3/2)),h); }
+    }
+  }
+  /* The amino-acid alphabet stops here: what it paints is a CODON that changed
+     residue, one cell wide, and painting the base marks underneath would put
+     two alphabets on the same read. Synonymous reads draw clean, which is the
+     point of asking in this alphabet at all. */
+  if(viewer!=='nucleotides'){
+    const am=readAAMiss(B,r); if(!am) return;
+    for(let i=0;i<am.length;i+=3){
+      const cd=am[i], aa=String.fromCharCode(am[i+1]), q=am[i+2];
+      const x=B.xBase+cd*cw;
+      ctx.globalAlpha=Math.max(.3,Math.min(1,q/30));
+      // aaColour takes the LETTER — AA_SCHEMES is keyed A:, R:, N: … — and was
+        // being handed AAIDX's integer, so `s[14]` was undefined and every
+        // residue fell through to the scheme's unknown-residue grey. Measured:
+        // 1,169 marks, 1,169 of them #9a9a94.
+        ctx.fillStyle=aaColour(aa)||TH.consDiff;
+      ctx.fillRect(x,y,Math.max(1,cw),h);
+      if(letters){
+        ctx.fillStyle=TH.glyphInk; ctx.textAlign='center';
+        ctx.fillText(aa,x+cw/2,y+h/2+Math.min(h,cw)*0.34);
+        ctx.textAlign='left';
+      }
+      ctx.globalAlpha=1;
+    }
+    return;
+  }
+  // the clipped tail's own bases, which is the whole reason to show clips
+  if(readClips&&ref){
+    for(const [from,n,dir] of [[r.pos-r.clipL,r.clipL,0],[r.end,r.clipR,1]]){
+      for(let t=0;t<n;t++){
+        const p0=from+t; if(p0<0||p0>=ref.length) continue;
+        const g=clipBaseAt(r,p0); if(!g||g.b===ref[p0]||g.b==='N') continue;
+        const j=idxOfRef(B.ex,p0+1); if(j<0) continue;
+        ctx.fillStyle=NT_COL[g.b]||TH.readDel;
+        ctx.globalAlpha=.75;
+        ctx.fillRect(B.xBase+j*w3,y,Math.max(1,w3),h);
+        ctx.globalAlpha=1;
+      }
+    }
+  }
+  const mm=r.mm; if(!mm) return;
+  for(let i=0;i<mm.length;i+=3){
+    const j=idxOfRef(B.ex,mm[i]+1); if(j<0) continue;
+    const b=String.fromCharCode(mm[i+1]), q=mm[i+2];
+    const x=B.xBase+j*w3;
+    ctx.globalAlpha=Math.max(.3,Math.min(1,q/30));
+    ctx.fillStyle=NT_COL[b]||TH.readDel;
+    ctx.fillRect(x,y,Math.max(1,w3),h);
+    if(letters){
+      ctx.fillStyle=TH.glyphInk; ctx.textAlign='center';
+      ctx.fillText(b,x+w3/2,y+h/2+Math.min(h,w3)*0.34);
+      ctx.textAlign='left';
+    }
+    ctx.globalAlpha=1;
+  }
+}
+
+/* The names pane, in the pile-up. It is not a list any more, so it becomes the
+   three strips' labels and — the part that matters — the place the sampling
+   ratio is STATED. A sampled stack whose rate is only in a sidebar note is a
+   figure someone will count off. */
+function drawReadsGutter(by,bh){
+  const sample=names[readsSample];
+  ctx.fillStyle=TH.expRow; ctx.fillRect(0,by,NAMES_W,READ_FOCUS_H);
+  ctx.font='11px ui-monospace,monospace'; ctx.fillStyle=TH.ink;
+  const nm=sample.length<=Math.floor((NAMES_W-34)/6.6)
+    ? sample : '…'+sample.slice(-(Math.floor((NAMES_W-34)/6.6)-1));
+  ctx.fillText(nm,8,by+READ_FOCUS_H/2+4);
+  // back to the list. Same toggle as clicking the name, spelled out because in
+  // this view there is no row under the cursor to suggest it.
+  ctx.fillStyle=TH.dim; ctx.textAlign='right';
+  ctx.fillText('✕',NAMES_W-8,by+READ_FOCUS_H/2+4);
+  ctx.textAlign='left';
+  window.__readBack={x:NAMES_W-22,y:by,w:22,h:READ_FOCUS_H};
+
+  const cy=by+READ_FOCUS_H, cvh=READ_COV_H-6;
+  ctx.font='10px ui-monospace,monospace';
+  ctx.fillStyle=TH.label; ctx.fillText('BAM depth',9,cy+12);
+  const maxD=window.__readMaxD||0;
+  if(maxD>0){
+    ctx.fillStyle=TH.dim; ctx.textAlign='right';
+    for(const t of depthTicks(maxD)){
+      const yy=cy+cvh+3-(t/maxD)*cvh;
+      if(yy<cy+15) continue;
+      ctx.fillText(t.toLocaleString(),NAMES_W-8,yy+3);
+    }
+    ctx.fillText('0',NAMES_W-8,cy+cvh+6);
+    ctx.textAlign='left';
+  }
+
+  const sy=readStackTop(), sh=readStackH();
+  ctx.fillStyle=TH.label; ctx.fillText('reads',9,sy+12);
+  const S=readBlocks.length?readBlocks[0].S:null;
+  ctx.fillStyle=TH.dim;
+  if(S){
+    const lines=[
+      S.seg,
+      S.total.toLocaleString()+' reads',
+      S.stride>1 ? 'showing 1 in '+S.stride : 'showing all',
+      S.keep.length.toLocaleString()+' drawn',
+      readRowsN.toLocaleString()+' rows'
+    ];
+    if(!S.ref) lines.push('no reference —');
+    if(!S.ref) lines.push('mismatches not shown');
+    lines.forEach((t,i)=>ctx.fillText(t,9,sy+28+i*12));
+  } else if(readProg){
+    ctx.fillText(Math.round(readProg.frac*100)+'%',9,sy+28);
+  }
+
+  /* How deep into the stack you are, numbered down the right of the gutter.
+     Without it the stack has no vertical scale at all: a scroll bar says how
+     far through you are as a fraction, which is not the same as knowing you are
+     looking at read 380 of 1,417 — and the whole reason to scroll a pile-up is
+     to reach a depth, not a fraction.
+
+     Every ten rows, until ten rows stop fitting; then 20, 50, 100 and so on, by
+     the same 1/2/5 rule depthTicks uses for the coverage axis, so the two
+     scales in this gutter are chosen the same way. Right-aligned against the
+     divider, clear of the sampling caption on the left. */
+  if(readRowsN>0){
+    const rrh=readRowH;
+    let step=10;
+    for(const c of [10,20,50,100,200,500,1000,2000,5000]){ step=c; if(c*rrh>=16) break; }
+    const k0=Math.max(0,Math.floor(readScroll)), k1=Math.min(readRowsN,Math.ceil(readScroll+sh/rrh));
+    ctx.font='9px ui-monospace,monospace'; ctx.textAlign='right';
+    ctx.strokeStyle=TH.rule;
+    for(let k=Math.ceil(k0/step)*step; k<k1; k+=step){
+      if(k===0) continue;                       // the top of the stack is not a depth
+      const yy=sy+(k-readScroll)*rrh;
+      if(yy<sy+6||yy>sy+sh-2) continue;
+      ctx.fillStyle=TH.dim;
+      ctx.fillText(k.toLocaleString(),NAMES_W-11,yy+3);
+      ctx.beginPath(); ctx.moveTo(NAMES_W-8,yy+.5); ctx.lineTo(NAMES_W,yy+.5); ctx.stroke();
+    }
+    ctx.textAlign='left'; ctx.font='10px ui-monospace,monospace';
+  }
+}
+
+function clampReadScroll(){
+  const sh=readStackH();
+  const max=Math.max(0,readRowsN-sh/readRowH);
+  readScroll=Math.min(max,Math.max(0,readScroll));
+}
+/* Focus a sample, or clear the focus. Clearing returns the full matrix, which
+   is how the reader picks a different one — there is no sample list inside the
+   pile-up and inventing a second one would be a second thing to keep in sync. */
+/* Push readRowH back into its slider. A zoom sets the row height when square
+   cells are on, and a slider that still reads 6 while the rows are 12 px is a
+   control lying about the thing it controls. */
+function syncReadControls(){
+  const s=document.getElementById('readrh'), v=document.getElementById('vreadrh');
+  const n=Math.round(readRowH);
+  if(s) s.value=Math.max(+s.min,Math.min(+s.max,n));
+  if(v) v.textContent=n;
+}
+function setReadsSample(sm){
+  readsSample = (sm===null||sm===readsSample) ? null : sm;
+  readScroll=0; readErr=null;
+  selRead=null; hoverRead=null;      // a read belongs to the sample it came from
+  buildReadCalls();
+  if(readsSample!==null) selSample=readsSample;
+  placeModeSwitch(); schedule();
 }
 
 
@@ -3895,10 +4823,16 @@ const isGenotypeAF=i=>afSource&&afSource[i]===2;
 
    Default is low frequency, which is what `variants` already was. */
 let viewer='aminoacids';       // 'aminoacids' | 'nucleotides' | 'selection'
-let variantView='lowfreq';     // 'lowfreq' | 'consensus'
-let viewMode='variants';       // DERIVED — 'variants' | 'consensus' | 'nucleotides' | 'selection'
+let variantView='lowfreq';     // 'lowfreq' | 'consensus' | 'reads'
+let viewMode='variants';       // DERIVED — 'variants' | 'consensus' | 'nucleotides' | 'selection' | 'reads'
 function deriveViewMode(){
   if(viewer==='selection')   return 'selection';
+  /* Reads outrank the alphabet axis, and that is the honest ordering rather
+     than a shortcut: a read carries bases, so there is no amino-acid form of
+     this view to choose between. The viewer selector greys while it is on —
+     see placeModeSwitch — for the same reason the variant-view switch greys in
+     selection: the control is inapplicable, not broken. */
+  if(variantView==='reads')  return 'reads';
   /* Nucleotides stays ONE viewMode for both variant views. Everything that keys
      on 'nucleotides' — ntSel, hitAt, the expanded band, squareRowPx's cw/3 unit,
      the per-base selection ring — is about the ALPHABET and is identical either
@@ -4748,6 +5682,306 @@ async function bamCodonCounts(sample,segName,positions,onProgress){
   return {haplotypes:hap,spanning,reads:S.reads};
 }
 
+/* ============================================================ read pileup ==
+   The reads themselves, one sample at a time, stacked the way IGV stacks them.
+
+   THE DEPTH PROBLEM, AND WHAT IS DONE ABOUT IT. Max depth on this run is 11,231
+   (MC-495, A_PA) and one segment can carry 658,441 reads. Keeping all of them
+   costs ~165 MB and produces a stack 11,000 rows tall — correct, unrenderable,
+   and unreadable. So the stack is a STATED SAMPLE: reads are taken in
+   coordinate order, and whenever the store fills, every other stored read is
+   dropped and the stride doubles. The retained set is then exactly
+   {n : n mod stride = 0} — a systematic sample, uniform along the segment, with
+   no relationship to which allele a read carries. The ratio is drawn in the
+   gutter, never inferred.
+
+   And the numbers are NOT sampled. The per-position base counts are folded in
+   from every read that passes the filters, before any thinning, in the same
+   walk. So the coverage track, the allele fractions and anything the panel
+   prints are exact while the picture below them is one read in n. That split is
+   the whole design: this project's recurring failure is two numbers with the
+   same name from different files, and a sampled pileup is the perfect way to
+   manufacture one. The picture is for finding things; the count is for
+   reporting them.
+
+   Read filters are the same BAM_SKIP / proper-pair pair the rest of the BAM
+   code uses — the set that reproduces LoFreq's DP4. A pileup drawn from a wider
+   set of reads than the callers used would disagree with the table beside it
+   for reasons nothing on screen could explain. */
+const READ_GAP=3;              // bases of clearance between reads within a row
+const READS_MIN_CW=3;          // below 1 px per base there is nothing to draw
+const READ_MAX_SEGS=3;         // segments scanned for one screenful
+
+let readsSample=null;          // sample index into `names`, or null for the list
+let readScroll=0;              // top read-row of the stack, fractional
+let readRowH=8;
+let readCap=12000;
+let readStrand=true, readClips=false, readQual=false;
+const readScan=new Map();      // sample|seg|cap -> scan result
+const readPending=new Map();
+let readProg=null;             // {seg,frac} while a scan is running
+let readErr=null;
+/* The read under the pointer, and the read that was clicked.
+
+   These exist because of the one thing a stack of reads cannot do on its own:
+   at a working zoom a 151 bp read is 3,300 px wide and the screen is 1,100, so
+   most rows show the MIDDLE of one read with both ends off-screen. No amount of
+   gap or rim separates reads you cannot see the ends of — the row simply reads
+   as a rule. Lighting the whole read under the pointer answers "where does this
+   one start and stop" directly, at any zoom, which is what the gap was being
+   asked to do and could not. */
+let hoverRead=null, selRead=null;
+
+/* product -> its exons with cumulative CDS offsets, so a reference position can
+   be turned into a base index within the product's column block. M2, NEP and
+   PA-X are spliced, so this is an exon walk and not `pos - start`. */
+const prodMapCache=new Map();
+function prodExons(product){
+  if(prodMapCache.has(product)) return prodMapCache.get(product);
+  const rec=gtfCDS&&gtfCDS.get(product);
+  let out=null;
+  if(rec){ out=[]; let off=0;
+    for(const [s,e] of rec.exons){ out.push({s,e,off}); off+=e-s+1; } }
+  prodMapCache.set(product,out);
+  return out;
+}
+function idxOfRef(exons,p1){   // 1-based reference position -> CDS base index
+  if(!exons) return -1;
+  for(const e of exons) if(p1>=e.s&&p1<=e.e) return e.off+(p1-e.s);
+  return -1;
+}
+
+function readsKey(sample,seg){ return sample+'|'+seg+'|'+readCap; }
+
+/* Drop every other stored read and double the stride. Called the moment the
+   store fills, so memory is bounded by the cap whatever the depth. */
+function thinReads(S){
+  const src=S.keep, out=[];
+  for(let i=0;i<src.length;i+=2) out.push(src[i]);
+  S.keep=out; S.stride*=2;
+}
+
+/* One buffer of BAM records. Counts fold in from every read; only every
+   stride-th read is kept for drawing. Returns the offset of the first
+   incomplete record, like consumeInto. */
+function consumeReads(buf,from,rid,S){
+  const dv=new DataView(buf.buffer,buf.byteOffset);
+  const ref=S.ref;
+  let p=from;
+  while(p+4<=buf.length){
+    const bs=dv.getInt32(p,true);
+    if(bs<32) return buf.length;
+    if(p+4+bs>buf.length) return p;
+    const q=p+4;
+    const recRid=dv.getInt32(q,true), pos=dv.getInt32(q+4,true);
+    const lName=buf[q+8], mapq=buf[q+9], nCig=dv.getUint16(q+12,true);
+    const flag=dv.getUint16(q+14,true), lSeq=dv.getInt32(q+16,true);
+    p=q+4+bs-4;
+    if(recRid!==rid||(flag&BAM_SKIP)||((flag&BAM_NEED)!==BAM_NEED)) continue;
+    const cigOff=q+32+lName, seqOff=cigOff+4*nCig, qualOff=seqOff+((lSeq+1)>>1);
+    const n=S.total++;
+    // one walk: per-position counts (every read) and the aligned end
+    let rp=pos, qp=0;
+    const cnt=S.cnt, cntF=S.cntF, del=S.del, L=S.L;
+    // Forward counts are kept alongside, not derived, so the base panel can
+    // state strand exactly rather than from the sampled stack. Strand bias is a
+    // property this app already judges calls on; an estimate of it would be the
+    // worst of both.
+    const fwd=(flag&16)===0;
+    for(let k=0;k<nCig;k++){
+      const v=dv.getUint32(cigOff+4*k,true), ln=v>>4, op=v&15;
+      if(op===0||op===7||op===8){
+        for(let j=0;j<ln;j++){
+          const r=rp+j; if(r<0||r>=L) continue;
+          const i=qp+j, byte=buf[seqOff+(i>>1)];
+          const slot=r*5+NIB2IX[(i&1)===0?(byte>>4):(byte&15)];
+          cnt[slot]++; if(fwd) cntF[slot]++;
+        }
+        rp+=ln; qp+=ln;
+      } else if(op===1||op===4){ qp+=ln; }
+      else if(op===2||op===3){
+        for(let j=0;j<ln;j++){ const r=rp+j; if(r>=0&&r<L) del[r]++; }
+        rp+=ln;
+      }
+    }
+    if(n%S.stride) continue;                     // thinned out of the picture
+    const end=rp;                                // 0-based, exclusive
+    const cig=new Uint32Array(nCig);
+    for(let k=0;k<nCig;k++) cig[k]=dv.getUint32(cigOff+4*k,true);
+    /* Mismatches are found HERE, once, not per frame. Comparing every base of
+       every visible read against the reference on each draw is ~360k string
+       compares at a scrolled fit width; found at scan time it is one pass and
+       the draw loop paints a handful of rects per read.
+       Flat triples (position, base, quality) rather than objects: 12,000 reads
+       carrying a few each is enough allocation to notice. */
+    let mm=null;
+    if(ref){
+      const tmp=[];
+      let r2=pos, q2=0;
+      for(let k=0;k<nCig;k++){
+        const v=cig[k], ln=v>>4, op=v&15;
+        if(op===0||op===7||op===8){
+          for(let j=0;j<ln;j++){
+            const r=r2+j; if(r<0||r>=ref.length) continue;
+            const i=q2+j, byte=buf[seqOff+(i>>1)];
+            const b=BAM_SEQ[(i&1)===0?(byte>>4):(byte&15)];
+            const rb=ref[r];
+            // An N in either sequence is an absence of evidence, not a
+            // disagreement, and painting it would speckle the stack.
+            if(b===rb||b==='N'||b==='='||rb==='N') continue;
+            tmp.push(r, b.charCodeAt(0), buf[qualOff+i]);
+          }
+          r2+=ln; q2+=ln;
+        } else if(op===1||op===4){ q2+=ln; }
+        else if(op===2||op===3){ r2+=ln; }
+      }
+      if(tmp.length) mm=Int32Array.from(tmp);
+    }
+    const c0=cig.length?cig[0]:0, cN=cig.length?cig[cig.length-1]:0;
+    S.keep.push({
+      pos, end, flag, mapq, lSeq, cig, mm,
+      seq:buf.slice(seqOff,seqOff+((lSeq+1)>>1)),
+      qual:buf.slice(qualOff,qualOff+lSeq),
+      clipL:(c0&15)===4?(c0>>4):0,
+      clipR:(cN&15)===4?(cN>>4):0
+    });
+    if(S.keep.length>=S.cap) thinReads(S);
+  }
+  return p;
+}
+
+/* First-fit packing, which is what makes the stack a stack. Reads arrive in
+   coordinate order, so scanning rows from the top and taking the first whose
+   last read has ended is both the minimum number of rows and stable — the same
+   read lands on the same row every time the sample is opened. */
+function packReads(reads){
+  const rows=[], ends=[];
+  for(let i=0;i<reads.length;i++){
+    const r=reads[i];
+    let k=0;
+    for(;k<ends.length;k++) if(ends[k]<=r.pos) break;
+    if(k===rows.length){ rows.push([]); ends.push(0); }
+    rows[k].push(r); ends[k]=r.end+READ_GAP;
+  }
+  return rows;
+}
+
+function bamReadsSegment(sample,segName){
+  const key=readsKey(sample,segName);
+  if(readScan.has(key)) return Promise.resolve(readScan.get(key));
+  if(readPending.has(key)) return readPending.get(key);
+  const pr=bamReadsSegment_(sample,segName,key)
+    .finally(()=>readPending.delete(key));
+  readPending.set(key,pr);
+  return pr;
+}
+async function bamReadsSegment_(sample,segName,key){
+  /* Every failure path caches a NULL against the key. Without it the draw loop
+     asks again on the very next frame — ensureReadScans only skips keys the map
+     knows about — and a segment with no index would start a fresh full-file
+     scan sixty times a second. "There is nothing here" is an answer and has to
+     be remembered like one. */
+  const no=()=>{ readScan.set(key,null); return null; };
+  const meta=await bamHeader(sample); if(!meta) return no();
+  const idx=await bamIndex(sample);  if(!idx)  return no();
+  let rid=meta.byName.get(segName);
+  if(rid===undefined)
+    for(const [nm,i] of meta.byName) if(shortLocus(nm)===shortLocus(segName)){ rid=i; break; }
+  if(rid===undefined||!idx[rid]) return no();
+  const L=meta.refs[rid].len, rname=meta.refs[rid].name;
+  /* No reference sequence means no mismatches — the reads still draw, as bodies
+     with nothing marked on them. Silence rather than a wrong answer, and the
+     gutter says which it is. */
+  const ref=refSeq.get(rname)||refSeq.get(shortLocus(rname))||null;
+  const S={L,ref,seg:segName,rname,
+           cnt:new Int32Array(L*5),cntF:new Int32Array(L*5),del:new Int32Array(L),
+           total:0,stride:1,cap:readCap,keep:[]};
+  const {bam}=findBAM(sample);
+  const chunks=baiChunks(idx[rid],0,L);
+  if(!chunks.length) return no();
+  const lo=Math.floor(chunks[0][0]/65536), firstInner=chunks[0][0]%65536;
+  const hi=Math.min(meta.size,Math.floor(chunks[chunks.length-1][1]/65536)+0x10000+64);
+  const WIN=8<<20;
+  let carry=null, off=lo, first=true;
+  while(off<hi){
+    const raw=await srcBytes(bam,off,Math.min(hi,off+WIN));
+    let p=0;
+    while(p+18<=raw.length){
+      let bl; try{ bl=bgzfLen(raw,p); }catch(e){ break; }
+      if(p+bl>raw.length) break;
+      let d=await inflateGzip(raw.subarray(p,p+bl));
+      if(d.length){
+        if(carry&&carry.length){
+          const j=new Uint8Array(carry.length+d.length);
+          j.set(carry); j.set(d,carry.length); d=j;
+        }
+        const from=first?firstInner:0; first=false;
+        const used=consumeReads(d,from,rid,S);
+        carry=used<d.length?d.slice(used):null;
+      }
+      p+=bl;
+    }
+    if(!p) break;
+    off+=p;
+    readProg={seg:segName,frac:(off-lo)/(hi-lo)};
+    schedule();
+    await new Promise(r=>setTimeout(r,0));
+  }
+  S.rows=packReads(S.keep);
+  readProg=null;
+  /* Four scans, not twenty-four. A read store is two orders of magnitude
+     heavier than the count arrays segScan caches — 12,000 reads is about 4 MB.
+     Evicting the OLDEST rather than clearing the map, because up to
+     READ_MAX_SEGS segments can be on screen at once and a clear would throw
+     away one of them to make room for its neighbour, then be asked for it again
+     on the next frame. */
+  while(readScan.size>=4) readScan.delete(readScan.keys().next().value);
+  readScan.set(key,S);
+  return S;
+}
+
+/* Base and quality at a 0-based reference position, off a stored read. Same
+   walk as baseAt; the record layout differs (seq and qual are copies here, not
+   offsets into a live buffer) so the two cannot be shared. */
+function storedBaseAt(r,refPos){
+  let rp=r.pos, qp=0;
+  for(let k=0;k<r.cig.length;k++){
+    const v=r.cig[k], ln=v>>4, op=v&15;
+    if(op===0||op===7||op===8){
+      if(refPos>=rp&&refPos<rp+ln){
+        const i=qp+(refPos-rp), byte=r.seq[i>>1];
+        return {b:BAM_SEQ[(i&1)===0?(byte>>4):(byte&15)], q:r.qual[i], clip:false};
+      }
+      rp+=ln; qp+=ln;
+    } else if(op===1||op===4){ qp+=ln; }
+    else if(op===2||op===3){
+      if(refPos>=rp&&refPos<rp+ln) return {b:'-',q:null,clip:false};
+      rp+=ln;
+    }
+  }
+  return null;
+}
+/* A base from a soft-clipped tail, laid on the reference where it WOULD sit if
+   the clip were an alignment. This is the view that settled item 0d: four of
+   the six IRMA-only calls were alleles inside a clipped tail, and a pileup that
+   hides clips cannot show that. Off by default — the tails are not aligned
+   sequence and must not be read as if they were. */
+function clipBaseAt(r,refPos){
+  if(refPos<r.pos){
+    const back=r.pos-refPos;
+    if(back>r.clipL) return null;
+    const i=r.clipL-back, byte=r.seq[i>>1];
+    return {b:BAM_SEQ[(i&1)===0?(byte>>4):(byte&15)], q:r.qual[i], clip:true};
+  }
+  if(refPos>=r.end){
+    const fwd=refPos-r.end;
+    if(fwd>=r.clipR) return null;
+    const i=r.lSeq-r.clipR+fwd, byte=r.seq[i>>1];
+    return {b:BAM_SEQ[(i&1)===0?(byte>>4):(byte&15)], q:r.qual[i], clip:true};
+  }
+  return null;
+}
+
 /* ================================================================== view == */
 let NAMES_W=180;
 const TRACK_H=48, RULER_H=28, REF_H=15;
@@ -4813,9 +6047,23 @@ function rowH(){ return rowPx>0?rowPx:autoRowH(); }
    use the full height, and fits three times as many samples on screen at the
    same zoom. */
 function squareRowPx(){
-  const unit = viewMode==='nucleotides' ? cw/3 : cw;
+  const unit = ntAlphabet() ? cw/3 : cw;
   return Math.max(unit, autoRowH());
 }
+/* The pile-up's own square rule. Its cell is a BASE, like the nucleotides view,
+   so the unit is cw/3 — but a read row is not a sample row and has no
+   autoRowH() floor to respect: there are hundreds of them and they are meant to
+   pack. So this is the unit itself, floored at a pixel rather than at a row
+   height, and capped where a read stops being a bar and becomes a box. */
+/* Floored at 6. Below that a read cannot carry a lane gap AND a rim AND still
+   be a bar you can see, so squaring would silently produce a stack no amount of
+   colour work can separate — which is exactly what happened, twice. The slider
+   still reaches 3 for anyone who wants density over legibility. */
+function squareReadRowH(){ return Math.max(6,Math.min(28,ntAlphabet()?cw/3:cw)); }
+/* How far a plain zoom may go. The matrix stops at 40 px per codon because a
+   residue needs no more; the pile-up is read at the BASE, so 40 px per codon is
+   13 px per base and the letters are still cramped where they matter most. */
+function maxCW(){ return viewMode==='reads' ? 160 : 40; }
 // The names pane splits into the sample name plus one narrow column per shown
 // metadata field.
 function metaW(){ let w=0; for(const c of metaShow) w+=mcw(c); return w; }
@@ -4901,9 +6149,18 @@ function changedNt(vi){
   for(let k=0;k<3;k++) if(rc[k]!==ac[k]) return k;
   return -1;
 }
-// Nucleotide selection only means anything in that view, at a zoom that shows
-// the thirds. One predicate so the click handlers and the two draws agree.
-const ntSel=()=> viewMode==='nucleotides' && cw>=3 && selNt!==null;
+/* Is the screen currently written in BASES? Two views can be, now: the
+   nucleotides view always, and the pile-up when the alphabet axis is set to
+   nucleotides. Everything that used to test `viewMode==='nucleotides'` to mean
+   "the cells are bases" tests this instead — the reference row, the selection
+   band, the site panel — because the pile-up drawing bases while the reference
+   row above it drew residues put two alphabets in one column, which is the
+   exact bug the nucleotides reference row was written to fix. */
+const ntAlphabet=()=> viewMode==='nucleotides' ||
+                      (viewMode==='reads' && viewer==='nucleotides');
+// Nucleotide selection only means anything in a base alphabet, at a zoom that
+// shows the thirds. One predicate so the click handlers and the draws agree.
+const ntSel=()=> ntAlphabet() && cw>=3 && selNt!==null;
 
 // Reference residue at a grid column, or null outside a known protein
 function refAt(col){
@@ -4980,6 +6237,11 @@ function draw(){
   // nucleotides band would otherwise sit at '…' forever waiting for a scan
   // nothing ever starts.
   else if(viewMode==='nucleotides'){ ensurePile(c0,c1); drawNucleotides(bx,by,bw,bh,c0,c1,r0,r1,rh,expH,expPos); }
+  /* Reads with no sample chosen is the ORDINARY MATRIX, not an empty view with
+     an instruction on it. The reader picks a sample by clicking one, and the
+     only place every sample is visible at once is the grid they already know —
+     so the view arrives showing it, and takes over the moment a row is picked. */
+  else if(viewMode==='reads'&&readsSample!==null){ drawReads(bx,by,bw,bh,c0,c1); }
   else {
   // Iterate the filtered CALL LIST, never the cell grid: the matrix is ~3%
   // dense and sampling columns would silently drop most of it.
@@ -5015,7 +6277,9 @@ function draw(){
      could not select anything — cellAt hit-tested the filtered grid, so a ring
      had nothing to draw around. Now that it hit-tests what was painted, a
      selection without a ring would look like the click had missed. */
-  if(selVariant!==null){
+  // Not in the focused pile-up: there is no matrix row to ring there, and
+  // drawReads puts the ring on the focus row instead.
+  if(selVariant!==null&&!(viewMode==='reads'&&readsSample!==null)){
     const c=V.col[selVariant], r=rowPos[V.row[selVariant]];
     if(r>=0&&c>=c0&&c<c1&&r>=r0&&r<r1){
       ctx.strokeStyle=TH.selRing; ctx.lineWidth=1.5;
@@ -5043,7 +6307,7 @@ function draw(){
        which one a given mark belonged to. Drawn directly rather than through the
        glyph atlas: the atlas is built per amino acid, and three sub-glyphs in a
        codon-wide cell is not what it caches. */
-    if(viewMode==='nucleotides' && cw>=3){
+    if(ntAlphabet() && cw>=3){
       const w3=cw/3, showLetters = cw>=21;
       ctx.font=Math.min(REF_H-3,Math.floor(w3*1.6))+'px ui-monospace,monospace';
       ctx.textAlign='center';
@@ -5130,7 +6394,35 @@ function draw(){
         ctx.fillStyle=p.primary?TH.ink:TH.boundSec; ctx.textAlign='left';
         ctx.fillText(p.product, v0+5, TRACK_H+11);
       }
-      if(cw*step>=40){
+      /* The ruler counts in whatever the cells are written in. In a base
+         alphabet that is NUCLEOTIDES, in REFERENCE coordinates — the same
+         number the tooltip and the base panel print as `nt`. It used to stay in
+         codons in both alphabets, which put a scale reading 326 over a panel
+         reading nt 976 and made a correct position look wrong.
+
+         Walked per EXON, not as `off + n`: for M2, NEP and PA-X the reference
+         position jumps at the junction, and a ruler that interpolated across it
+         would number bases that are not there. */
+      const ntEx = ntAlphabet() ? prodExons(p.product) : null;
+      if(ntEx&&ntEx.length){
+        const w3=cw/3;
+        let bstep=Math.pow(10,Math.floor(Math.log10(Math.max(1e-9,60/w3))));
+        [1,2,5,10].some(m=>{ if(bstep*m*w3>=60){bstep*=m;return true;} return false;});
+        bstep=Math.max(1,bstep);
+        if(bstep*w3>=40){
+          ctx.textAlign='center'; ctx.fillStyle=TH.dim;
+          for(const e of ntEx){
+            for(let v=Math.ceil(e.s/bstep)*bstep; v<=e.e; v+=bstep){
+              const x=bx+(p.off-scrollCol)*cw+(e.off+(v-e.s))*w3;
+              if(x<bx||x>bx+bw) continue;
+              ctx.strokeStyle=TH.tick; ctx.beginPath();
+              ctx.moveTo(x,TRACK_H+RULER_H-5); ctx.lineTo(x,TRACK_H+RULER_H); ctx.stroke();
+              ctx.fillText(v,x,TRACK_H+24);
+            }
+          }
+        }
+      }
+      else if(cw*step>=40){
         ctx.textAlign='center'; ctx.fillStyle=TH.dim;
         for(let a=step;a<=p.aa;a+=step){
           const x=bx+(p.off+a-1-scrollCol)*cw;
@@ -5167,7 +6459,8 @@ function draw(){
   ctx.moveTo(NAMES_W-.5,0); ctx.lineTo(NAMES_W-.5,cssH); ctx.stroke();
   ctx.save(); ctx.beginPath(); ctx.rect(0,by,NAMES_W,bh); ctx.clip();
   ctx.font='11px ui-monospace,monospace';
-  if(rh>=9){
+  if(viewMode==='reads'&&readsSample!==null){ drawReadsGutter(by,bh); }
+  else if(rh>=9){
     const charW=ctx.measureText('M').width||6.6;
     const nw=nameW();
     const maxChars=Math.max(4,Math.floor((nw-14)/charW));
@@ -5337,6 +6630,14 @@ function draw(){
       ? (snpCells ? `${snpStats.cells.toLocaleString()} codons with diversity`
                   : (snpState==='norun'||snpState==='nofile'
                        ? 'no SNPGenie results' : 'reading codon table…'))
+      : viewMode==='reads'
+        ? (readsSample===null
+             ? 'click a sample to open its reads'
+             : (()=>{ const S=readBlocks.length?readBlocks[0].S:null;
+                 return S ? `${names[readsSample]} · ${S.seg} · `+
+                   `${S.total.toLocaleString()} reads, `+
+                   (S.stride>1?`1 in ${S.stride} drawn`:'all drawn')
+                          : `${names[readsSample]} — reading`; })())
       : viewMode==='consensus'
         ? `${consN.toLocaleString()} consensus differences`
       : viewMode==='nucleotides'
@@ -5850,9 +7151,207 @@ function freqBar(f){
 
 function esc(s){ return String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
 
+/* One base of the pile-up, in the panel.
+
+   Neither existing panel answers the question a click in this view is asking.
+   renderVariant describes a CALL — a codon, a residue, three callers' opinions
+   of it — and renderSite describes a COLUMN across all 131 samples. Clicking a
+   base in a pile-up asks something narrower and more concrete than either: what
+   is at this position, in this sample, in the reads. So it gets its own block,
+   and the call panel is stacked underneath it rather than replacing it — the
+   base is what was clicked, the call is context for it.
+
+   Every number here is exact. It comes from the full pass over the segment, not
+   from the sampled stack drawn above, which is the same split the coverage strip
+   keeps. */
+/* ONE READ, in the panel. The thing the reader actually clicked.
+
+   Everything else in this app describes a position: a call at a codon, a
+   column across samples, the composition at a base. A read is the unit of
+   evidence underneath all of them and had no panel of its own, so clicking one
+   could only ever answer a question about its neighbourhood. What is worth
+   saying about a read is what item 0d turned on — where it starts and stops,
+   how much of it the aligner threw away, how far the base of interest sits from
+   an end, and how many other bases it disagrees on. A read that carries its
+   allele two bases before a 40 bp clipped tail is a different object from one
+   that carries it in the middle of a clean 151 bp alignment, and the table
+   beside it cannot tell them apart. */
+/* Base quality along one read, as a bar per base.
+
+   Three bands, and they are the conventional Phred reading rather than
+   anything invented here: >=30 is one error in a thousand and is what every
+   caller in this pipeline treats as trustworthy (iVar's `-q 30`, and the floor
+   the 0d alt reads cleared), 20-29 is one in a hundred — usable, not decisive —
+   and below 20 is one error in fifty or worse.
+
+   Drawn in REFERENCE orientation, left to right, which for a reverse-strand
+   read means its 5' end is on the RIGHT. Said in the caption, because the
+   characteristic shape of a quality profile is a decline toward the 3' end and
+   reading that backwards would invert the conclusion. */
+const Q_GOOD=30, Q_OK=20;
+function qBand(q){ return q>=Q_GOOD?'qGood':q>=Q_OK?'qOk':'qBad'; }
+// Query index at a 0-based reference position, or -1. The graph marks the base
+// the reader clicked, and that needs the offset into the read, not the base.
+function storedQueryIndexAt(r,refPos){
+  let rp=r.pos, qp=0;
+  for(let k=0;k<r.cig.length;k++){
+    const v=r.cig[k], ln=v>>4, op=v&15;
+    if(op===0||op===7||op===8){
+      if(refPos>=rp&&refPos<rp+ln) return qp+(refPos-rp);
+      rp+=ln; qp+=ln;
+    } else if(op===1||op===4){ qp+=ln; }
+    else if(op===2||op===3){ if(refPos>=rp&&refPos<rp+ln) return -1; rp+=ln; }
+  }
+  return -1;
+}
+function readQualGraph(r,p0){
+  const n=r.lSeq; if(!n||!r.qual||!r.qual.length) return '';
+  const H=34, W=100, bw=W/n;
+  let bars='', good=0, ok=0, bad=0, sum=0;
+  for(let i=0;i<n;i++){
+    const q=r.qual[i]; sum+=q;
+    if(q>=Q_GOOD) good++; else if(q>=Q_OK) ok++; else bad++;
+    // 42 is the ceiling of the Illumina scale these BAMs use; capping there
+    // keeps the bar heights comparable between reads rather than each read
+    // being scaled to its own maximum.
+    const h=Math.max(0.8,Math.min(1,q/42)*H);
+    bars+=`<rect x="${(i*bw).toFixed(3)}" y="${(H-h).toFixed(2)}" `+
+          `width="${(bw*1.04).toFixed(3)}" height="${h.toFixed(2)}" `+
+          `fill="var(--${qBand(q)})"/>`;
+  }
+  // the clicked base, marked on the profile
+  let mark='';
+  if(p0!=null){
+    const qi=storedQueryIndexAt(r,p0);
+    if(qi>=0) mark=`<rect x="${(qi*bw-0.15).toFixed(3)}" y="0" `+
+      `width="${Math.max(0.4,bw*1.2).toFixed(3)}" height="${H}" `+
+      `fill="none" stroke="var(--qmark)" stroke-width="0.35"/>`;
+  }
+  const gl=y=>`<line x1="0" y1="${y}" x2="${W}" y2="${y}" stroke="var(--qgrid)" stroke-width="0.3"/>`;
+  return `<div class="sub" style="margin-top:8px">base quality along the read `+
+      `<span class="k">mean ${(sum/n).toFixed(1)}</span></div>`+
+    `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" `+
+      `style="width:100%;height:44px;display:block;margin:3px 0 2px">`+
+      gl(H-Q_GOOD/42*H)+gl(H-Q_OK/42*H)+bars+mark+`</svg>`+
+    `<div class="lticks" style="margin:0">`+
+      `<span style="color:var(--qGood)">&ge;30 ${good}</span>`+
+      `<span style="color:var(--qOk)">20&ndash;29 ${ok}</span>`+
+      `<span style="color:var(--qBad)">&lt;20 ${bad}</span></div>`+
+    `<div class="note">Reference orientation, so a ${(r.flag&16)?'<b>reverse</b>':'forward'} `+
+      `read has its 5&prime; end on the ${(r.flag&16)?'right':'left'}. `+
+      `Gridlines at 30 and 20.</div>`;
+}
+function readsReadBlock(r,B,p0){
+  const strand=(r.flag&16)?'reverse':'forward';
+  const alnLen=r.end-r.pos, mm=r.mm?r.mm.length/3:0;
+  let ins=0, del=0;
+  for(let k=0;k<r.cig.length;k++){
+    const op=r.cig[k]&15, ln=r.cig[k]>>4;
+    if(op===1) ins+=ln; else if(op===2||op===3) del+=ln;
+  }
+  const g=(p0!=null)?(storedBaseAt(r,p0)||clipBaseAt(r,p0)):null;
+  const rb=(B&&B.S.ref&&p0!=null)?B.S.ref[p0]:null;
+  const fromEnd=(p0!=null&&p0>=r.pos&&p0<r.end)
+    ? Math.min(p0-r.pos, r.end-1-p0) : null;
+  return `<h3>${esc(B?B.S.seg:'')} <span style="font-weight:400;color:var(--dim)">`+
+      `${(r.pos+1).toLocaleString()}–${r.end.toLocaleString()}</span></h3>`+
+    (g?`<div class="sub">at ${(p0+1).toLocaleString()} it reads `+
+        `<b style="color:${NT_COL[g.b]||''}">${esc(g.b)}</b>`+
+        (rb?` against reference <b style="color:${NT_COL[rb]||''}">${esc(rb)}</b>`:'')+
+        (g.q!=null?` · <span class="k">BQ</span> ${g.q}`:'')+
+        (g.clip?' · <span class="warn">inside a soft-clipped tail</span>':'')+
+        (fromEnd!=null?` · <span class="k">${fromEnd} bp from the nearer end</span>`:'')+
+        '</div>':'')+
+    `<table class="site">`+
+      `<tr><td class="k">strand</td><td>${strand}</td></tr>`+
+      `<tr><td class="k">MAPQ</td><td>${r.mapq}</td></tr>`+
+      `<tr><td class="k">aligned</td><td>${alnLen} bp of ${r.lSeq}</td></tr>`+
+      `<tr><td class="k">soft-clipped</td><td>${r.clipL} left / ${r.clipR} right`+
+        `${(r.clipL||r.clipR)&&!readClips?' <span class="k">(hidden — tick “show soft-clipped tails”)</span>':''}</td></tr>`+
+      (ins||del?`<tr><td class="k">indels</td><td>${ins} bp inserted / ${del} bp deleted</td></tr>`:'')+
+      `<tr><td class="k">mismatches</td><td>${mm} against the reference</td></tr>`+
+    `</table>`+
+    readQualGraph(r,p0);
+}
+function readsBaseBlock(col,nt){
+  let B=null;
+  for(const b of readBlocks) if(col>=b.pr.off&&col<b.pr.off+b.pr.aa){ B=b; break; }
+  if(!B) return '<div class="empty">No reads loaded here yet.</div>';
+  const j=(col-B.pr.off)*3+nt, p1=refOfIdx(B.ex,j);
+  if(p1<1||p1>B.S.L) return '<div class="empty">This base is outside the scanned segment.</div>';
+  const p0=p1-1, o=p0*5, cn=B.S.cnt, cf=B.S.cntF;
+  const tot=cn[o]+cn[o+1]+cn[o+2]+cn[o+3]+cn[o+4], del=B.S.del[p0];
+  const rb=B.S.ref?B.S.ref[p0]:null;
+  let rowsHtml='';
+  for(let k=0;k<4;k++){
+    const b='ACGT'[k], n=cn[o+k]; if(!n) continue;
+    const f=tot?n/tot*100:0, fw=cf[o+k], rv=n-fw;
+    rowsHtml+=`<tr><td><b style="color:${NT_COL[b]}">${b}</b>${b===rb?' <span class="k">ref</span>':''}</td>`+
+      `<td style="text-align:right">${n.toLocaleString()}</td>`+
+      `<td style="text-align:right">${f.toFixed(2)}%</td>`+
+      `<td style="text-align:right" class="k">${fw} / ${rv}</td></tr>`;
+  }
+  if(del) rowsHtml+=`<tr><td class="k">del</td><td style="text-align:right">${del.toLocaleString()}</td>`+
+    `<td style="text-align:right">—</td><td style="text-align:right" class="k">—</td></tr>`;
+  const cds=refCDS.get(B.pr.product);
+  const codon=cds?cds.slice((col-B.pr.off)*3,(col-B.pr.off)*3+3):'';
+  return `<h3>${esc(B.S.seg)} <b>nt ${p1.toLocaleString()}</b>`+
+    `<span style="font-weight:400;color:var(--dim)"> · codon ${col-B.pr.off+1}</span></h3>`+
+    `<div class="sub">${esc(names[readsSample])} · ${esc(B.pr.product)} `+
+      `codon ${col-B.pr.off+1}, base ${nt+1} of 3`+
+      (codon?` · reference codon <b>${esc(codon)}</b>`:'')+
+      (rb?` · reference base <b style="color:${NT_COL[rb]||''}">${esc(rb)}</b>`:'')+'</div>'+
+    `<div class="sub"><span class="k">BAM depth</span> <b>${(tot+del).toLocaleString()}</b>`+
+      ` <span class="k">of</span> ${B.S.total.toLocaleString()} reads on this segment</div>`+
+    `<table class="site"><tr><th></th><th style="text-align:right">reads</th>`+
+      `<th style="text-align:right">freq</th><th style="text-align:right">fwd / rev</th></tr>`+
+      rowsHtml+`</table>`+
+    `<div class="note">Counted over every read that passed the filters, not over `+
+      `the ${B.S.stride>1?'1-in-'+B.S.stride+' sample ':''}stack drawn above.</div>`;
+}
 function renderDetail(){
   const el=document.getElementById('detailbody');
   if(!ready){ el.innerHTML='<div class="empty">Open a run to begin.</div>'; return; }
+  /* The pile-up, on a base. Taken before every other branch: a base click sets
+     selVariant too when the codon carries a call, and falling through would
+     answer the codon question the reader did not ask. The call still renders,
+     underneath. */
+  if(viewMode==='reads'&&readsSample!==null&&(selRead||(ntSel()&&selCol!==null))){
+    /* Three blocks, narrowest first: the READ that was clicked, the BASE it was
+       clicked on, then the CALL if the codon carries one. Each is a strictly
+       wider question than the one above it, and the reader picked the narrowest
+       by clicking where they clicked. */
+    el.innerHTML='<section class="dsec" id="readpane"></section>'+
+                 '<section class="dsec" id="basepane"></section>'+
+                 '<section class="dsec" id="callpane"></section>';
+    // An empty section is REMOVED, not left as a heading over nothing.
+    const fill=(id,title,html)=>{
+      const sec=document.getElementById(id);
+      if(!html){ sec.remove(); return; }
+      sec.innerHTML='<div class="subhead">'+title+'</div>'+html;
+    };
+    let B=null;
+    for(const b of readBlocks)
+      if(selCol!==null&&selCol>=b.pr.off&&selCol<b.pr.off+b.pr.aa){ B=b; break; }
+    if(!B) B=readBlocks[0]||null;
+    let p0=null;
+    if(B&&selCol!==null){
+      const p1=refOfIdx(B.ex,(selCol-B.pr.off)*3+(selNt||0));
+      if(p1>0) p0=p1-1;
+    }
+    fill('readpane','Selected Read', selRead?readsReadBlock(selRead,B,p0):'');
+    fill('basepane','This Position, Across All Reads',
+         (ntSel()&&selCol!==null)?readsBaseBlock(selCol,selNt):'');
+    /* The call section is filled asynchronously, so it gets its heading and an
+       inner target up front — renderVariant sets innerHTML on what it is given
+       and would otherwise wipe the heading. */
+    const cs=document.getElementById('callpane');
+    if(selVariant!==null){
+      cs.innerHTML='<div class="subhead">Selected Position</div><div id="callbody"></div>';
+      renderVariant(document.getElementById('callbody'),selVariant);
+    } else cs.remove();
+    return;
+  }
   // Before selVariant: an IRMA cell has no variant, and falling through would
   // render the previous selection's panel beside the newly selected cell.
   if(selIrma){ renderIrma(el,selIrma.row,selIrma.col); return; }
@@ -6439,6 +7938,30 @@ function schedule(){ if(!raf) raf=requestAnimationFrame(()=>{raf=null;draw();});
 cv.addEventListener('wheel',e=>{
   e.preventDefault();
   const rect=cv.getBoundingClientRect();
+  /* The pile-up keeps the app's wheel convention: a plain wheel zooms, here as
+     everywhere else. What it adds is a way DOWN the stack, which no other view
+     needs — cmd/ctrl, and alt beside it because alt already means "pan up and
+     down" in the matrix. Over the names gutter the wheel scrolls the stack for
+     the same reason it scrolls the sample list there: zooming from a pane with
+     no columns in it is never what was meant. */
+  if(viewMode==='reads'&&readsSample!==null){
+    if(e.ctrlKey||e.metaKey||e.altKey||e.clientX-rect.left<NAMES_W){
+      readScroll+=e.deltaY/readRowH; clampReadScroll();
+    } else if(e.shiftKey){ scrollCol+=e.deltaY/cw; }
+    else {
+      const px=e.clientX-rect.left-NAMES_W;
+      const colAt=scrollCol+px/cw;
+      cw=Math.max(0.04,Math.min(maxCW(),cw*Math.exp(-e.deltaY*0.0016)));
+      // Square cells mean square BASES here, and the row that has to follow the
+      // zoom is the read row — rowPx belongs to a matrix this view is not
+      // drawing. The slider stays a manual override until the next zoom, which
+      // is exactly what ctrl+wheel does to rowPx in the other views.
+      if(squareCells) readRowH=squareReadRowH();
+      scrollCol=colAt-px/cw; userZoomed=true; clampReadScroll();
+      syncReadControls();
+    }
+    schedule(); return;
+  }
   if(e.ctrlKey||e.metaKey){
     // fine-tune row height on its own, without touching the column scale
     rowPx=Math.max(1,Math.min(40,(rowPx||rowH())*Math.exp(-e.deltaY*0.002)));
@@ -6455,7 +7978,7 @@ cv.addEventListener('wheel',e=>{
     const px=e.clientX-rect.left-NAMES_W, py=e.clientY-rect.top-topH();
     const rhOld=rowH();
     const colAt=scrollCol+px/cw, rowAt=scrollRow+py/rhOld;
-    cw=Math.max(0.04,Math.min(40,cw*Math.exp(-e.deltaY*0.0016)));
+    cw=Math.max(0.04,Math.min(maxCW(),cw*Math.exp(-e.deltaY*0.0016)));
     if(squareCells) rowPx=squareRowPx();
     scrollCol=colAt-px/cw;
     if(squareCells) scrollRow=rowAt-py/rowH();
@@ -6569,21 +8092,192 @@ function ntCellAt(cx,cy){
   const vi=src[sm*NC+c];
   return vi<0?null:{i:vi};
 }
+/* ---- hit-testing the pile-up ---------------------------------------------
+   Same rule as ntCellAt and the consensus branch of cellAt: test what was
+   PAINTED. The focus row is painted from the filtered grid, so that is what a
+   click resolves against, and a column with no call for this sample returns the
+   column rather than nothing — the site panel is the right answer there, and a
+   dead click in a view built to explain one position would be perverse. */
+function readsColAt(cx){
+  const c=Math.floor(scrollCol+(cx-NAMES_W)/cw);
+  return (c>=0&&c<NC)?c:-1;
+}
+/* EVERY call the focus sample has, unfiltered, by column. The filtered grid is
+   the wrong thing to hit-test in this view and the reason is worth stating,
+   because it is the third appearance of one bug: the pile-up is painted from
+   the BAM, which knows nothing about the call filters, so a synonymous change
+   sits on screen as a coloured column of reads while `vidx` has nothing at that
+   column and the click resolves to a bare site. Measured on `MC-559` `PB2` at
+   the default nonsynonymous-only setting: 21 calls, 10 clickable. Same split
+   ntCellAt was written to fix (64 painted, 31 clickable) and the same one the
+   consensus branch of cellAt was (65 painted, 32 clickable).
+
+   Built once per focus sample. It does not depend on the filters, so it does
+   not rebuild with them. */
+let readCalls=null;            // col -> variant index, best by frequency
+function buildReadCalls(){
+  readCalls=null;
+  if(readsSample===null||!V.n) return;
+  const m=new Map();
+  for(let i=0;i<V.n;i++){
+    if(V.row[i]!==readsSample) continue;
+    const c=V.col[i], p=m.get(c);
+    if(p===undefined||V.freq[i]>V.freq[p]) m.set(c,i);
+  }
+  readCalls=m;
+}
+function readsHitAt(cx,cy){
+  if(!ready||readsSample===null||!vidx||cx<NAMES_W||cy<topH()) return null;
+  const c=readsColAt(cx); if(c<0) return null;
+  // The filtered call first, so a click on a painted focus-row mark opens the
+  // same call that mark stands for; then any call at all; then the site.
+  const vi=vidx[readsSample*NC+c];
+  if(vi>=0) return {i:vi};
+  const un=readCalls?readCalls.get(c):undefined;
+  if(un!==undefined) return {i:un, hiddenByFilters:true};
+  return {site:c};
+}
+/* The read under the pointer, and the base it carries at that position. Used by
+   the tooltip only — a read is not a selection, it is evidence about one. */
+function readUnder(cx,cy){
+  if(readsSample===null||!readBlocks.length) return null;
+  const sy=readStackTop(), sh=readStackH(), w3=cw/3;
+  if(cy<sy||cy>sy+sh) return null;
+  const k=Math.floor(readScroll+(cy-sy)/readRowH);
+  if(k<0||k>=readRowsN) return null;
+  for(const B of readBlocks){
+    const j=Math.floor((cx-B.xBase)/w3);
+    if(j<0||j>=B.cdsLen||j<B.j0||j>B.j1) continue;
+    const p1=refOfIdx(B.ex,j); if(p1<1) continue;
+    const p0=p1-1, rows=B.S.rows;
+    if(k>=rows.length) return {read:null,p0,B};
+    for(const r of rows[k]){
+      if(p0>=r.pos&&p0<r.end) return {read:r,p0,B,g:storedBaseAt(r,p0)};
+      if(readClips){ const g=clipBaseAt(r,p0); if(g) return {read:r,p0,B,g}; }
+    }
+    return {read:null,p0,B};
+  }
+  return null;
+}
+/* The pile-up's tooltip, by strip. Everything printed here is exact: the depth
+   and the base composition come from the full pass, and the read's own base and
+   quality come off the record. Nothing is inferred from what happens to be
+   drawn. */
+function readsTip(cx,cy){
+  if(cx<NAMES_W||cy<topH()) return null;
+  const sample=names[readsSample];
+  const c=readsColAt(cx); if(c<0) return null;
+  const fy=topH();
+  if(cy<fy+READ_FOCUS_H){                       // the focus row: a call, or nothing
+    const vi=vidx?vidx[readsSample*NC+c]:-1;
+    if(vi<0) return null;
+    const p=PROD.get(V.prod[vi]);
+    const refAA=V.ref[vi]===255?'?':AAS[V.ref[vi]], altAA=V.alt[vi]===255?'?':AAS[V.alt[vi]];
+    /* "caller depth", not "depth" — and the coverage strip below says "BAM
+       depth" for the same reason. This is the only view where both numbers are
+       on screen at once, and they are not the same quantity: the caller's is
+       what its own filters left it (MC-559 PB2 103 reports 153) while the strip
+       counts every read that passed the BAM filters (206). Two numbers with the
+       same name from different files is this project's recurring failure; here
+       it would be a tooltip and a bar chart disagreeing by a third with nothing
+       on screen to explain it. */
+    return `<b>${esc(sample)}</b> · ${esc(p?p.product:'?')} `+
+      `<b>${esc(refAA)}${V.aapos[vi]}${esc(altAA)}</b><br>`+
+      `<span class="k">freq</span> ${(V.freq[vi]*100).toFixed(2)}%  `+
+      `<span class="k">caller depth</span> ${V.depth[vi].toLocaleString()}`;
+  }
+  // find the product block under the pointer, for both remaining strips
+  let B=null, p0=-1;
+  const w3=cw/3;
+  for(const b of readBlocks){
+    const j=Math.floor((cx-b.xBase)/w3);
+    if(j<b.j0||j>b.j1||j<0||j>=b.cdsLen) continue;
+    const p1=refOfIdx(b.ex,j); if(p1<1) continue;
+    B=b; p0=p1-1; break;
+  }
+  if(!B) return null;
+  const o=p0*5, cn=B.S.cnt;
+  const tot=cn[o]+cn[o+1]+cn[o+2]+cn[o+3]+cn[o+4], del=B.S.del[p0];
+  const rb=B.S.ref?B.S.ref[p0]:null;
+  /* "nt 976", not "976". The ruler above is numbered in CODONS and this is a
+     NUCLEOTIDE, so the bare number reads as a contradiction with the scale it
+     sits under — 976 against a tick labelled 326. Naming the unit is the whole
+     fix; the number was right. */
+  const head=`<b>${esc(sample)}</b> · ${esc(B.S.seg)} <b>nt ${(p0+1).toLocaleString()}</b>`+
+    (rb?` · ref <b style="color:${NT_COL[rb]||TH.ink}">${esc(rb)}</b>`:'');
+  if(cy<fy+READ_FOCUS_H+READ_COV_H){            // the coverage strip
+    let parts=[];
+    for(let k=0;k<4;k++){
+      const b='ACGT'[k]; if(!cn[o+k]) continue;
+      parts.push(`<span style="color:${NT_COL[b]}">${b}</span> ${cn[o+k].toLocaleString()}`+
+                 (tot?` (${(cn[o+k]/tot*100).toFixed(2)}%)`:''));
+    }
+    if(del) parts.push(`del ${del.toLocaleString()}`);
+    return head+'<br><span class="k">BAM depth</span> '+(tot+del).toLocaleString()+
+      '<br>'+parts.join(' · ');
+  }
+  const rr=readUnder(cx,cy);                    // the stack
+  if(!rr) return null;
+  if(!rr.read) return head+'<br><span class="k">no read</span> in this row here';
+  const r=rr.read, g=rr.g;
+  const strand=(r.flag&16)?'reverse':'forward';
+  const from=Math.min(rr.p0-r.pos, r.end-1-rr.p0);   // distance to the nearer end
+  return head+
+    `<br><span class="k">read</span> <b style="color:${g&&NT_COL[g.b]||TH.ink}">`+
+      `${esc(g?g.b:'?')}</b>`+
+      (g&&g.q!=null?`  <span class="k">BQ</span> ${g.q}`:'')+
+      (g&&g.clip?'  <span class="k">soft-clipped</span>':'')+
+    `<br><span class="k">MAPQ</span> ${r.mapq}  `+
+      `<span class="k">strand</span> ${strand}`+
+    `<br><span class="k">spans</span> ${(r.pos+1).toLocaleString()}–${r.end.toLocaleString()}`+
+      `  <span class="k">from end</span> ${from}`+
+    (r.clipL||r.clipR ? `<br><span class="k">clipped</span> ${r.clipL} / ${r.clipR} bp` : '');
+}
 // One entry point, so the tooltip and the click can never disagree about what
 // is under the pointer.
-function hitAt(cx,cy){ return viewMode==='nucleotides'?ntCellAt(cx,cy):cellAt(cx,cy); }
+function hitAt(cx,cy){
+  if(viewMode==='reads'&&readsSample!==null) return readsHitAt(cx,cy);
+  return viewMode==='nucleotides'?ntCellAt(cx,cy):cellAt(cx,cy);
+}
 const tip=document.getElementById('tip');
 cv.addEventListener('mousemove',e=>{
   if(!drag&&!sizing&&!colResize){
     const rct=cv.getBoundingClientRect(), lx=e.clientX-rct.left, ly=e.clientY-rct.top;
     // A metadata divider takes precedence over the header's sort pointer, so the
     // cursor tells you which of the two a click will do before you commit to it.
+    // In the pile-up the gutter's only control is the focus row's ✕, and the
+    // QC column it would otherwise offer a pointer for is not drawn there.
+    const readsBack = viewMode==='reads'&&readsSample!==null&&lx<NAMES_W
+                      && ly>topH() && ly<topH()+READ_FOCUS_H;
     cv.style.cursor = Math.abs(lx-NAMES_W)<5 ? 'col-resize'
       : metaEdgeAt(lx,ly) ? 'col-resize'
+      : readsBack ? 'pointer'
+      : (viewMode==='reads'&&readsSample!==null&&lx<NAMES_W) ? 'default'
       : (ready&&lx<NAMES_W&&(ly<=topH()&&ly>topH()-20||lx<QC_W&&ly>topH())) ? 'pointer'
       : 'default';
   }
   const rect=cv.getBoundingClientRect();
+  /* The pile-up has three strips and they say three different things, so it
+     cannot go through the single-cell tooltip below — and readsHitAt returns
+     {site} for a column with no call, which has no index into V for that path
+     to read. */
+  if(viewMode==='reads'&&readsSample!==null){
+    const cxr=e.clientX-rect.left, cyr=e.clientY-rect.top;
+    // Light the whole read under the pointer. One repaint per read change, not
+    // per mouse move — at 1.9 ms a frame that is free, but a repaint per pixel
+    // of travel would not be.
+    const rr0=readUnder(cxr,cyr);
+    const hv=rr0&&rr0.read?rr0.read:null;
+    if(hv!==hoverRead){ hoverRead=hv; schedule(); }
+    const html=readsTip(cxr,cyr);
+    if(!html){ tip.style.display='none'; return; }
+    tip.innerHTML=html; tip.style.display='block';
+    let rx=e.clientX-rect.left+14, ry=e.clientY-rect.top+14;
+    if(rx+tip.offsetWidth>cssW-8) rx=e.clientX-rect.left-tip.offsetWidth-14;
+    if(ry+tip.offsetHeight>cssH-8) ry=e.clientY-rect.top-tip.offsetHeight-14;
+    tip.style.left=rx+'px'; tip.style.top=ry+'px';
+    return;
+  }
   const hit=hitAt(e.clientX-rect.left,e.clientY-rect.top);
   if(!hit){ tip.style.display='none'; return; }
   // An IRMA cell has no call behind it, so nothing below may touch V.
@@ -6616,9 +8310,12 @@ cv.addEventListener('mousemove',e=>{
   if(y+tip.offsetHeight>cssH-8) y=e.clientY-rect.top-tip.offsetHeight-14;
   tip.style.left=x+'px'; tip.style.top=y+'px';
 });
-cv.addEventListener('mouseleave',()=>{tip.style.display='none';});
+cv.addEventListener('mouseleave',()=>{
+  tip.style.display='none';
+  if(hoverRead){ hoverRead=null; schedule(); }
+});
 
-let drag=null,sizing=null,downAt=null,dragRow=null,colResize=null;
+let drag=null,sizing=null,downAt=null,dragRow=null,colResize=null,sbDrag=null;
 /* Inverse of __yOf. Without the band correction, every click below an expanded
    sample lands one row too high — including the click that closes it. Returns
    -1 for a point inside the band itself, which is not a row. */
@@ -6636,6 +8333,27 @@ cv.addEventListener('mousedown',e=>{
   const rect=cv.getBoundingClientRect();
   const lx=e.clientX-rect.left, ly=e.clientY-rect.top;
   if(Math.abs(lx-NAMES_W)<5){ sizing={x:e.clientX,w:NAMES_W}; return; }
+  /* The pile-up's scroll bar, before anything else can claim the drag. Clicking
+     the track pages, grabbing the thumb drags — a scroll bar that only responds
+     to its thumb is a scroll bar someone will report as broken. */
+  if(viewMode==='reads'&&readsSample!==null&&window.__readSB){
+    const S=window.__readSB;
+    if(lx>=S.tx-2&&lx<=S.tx+S.tw+2&&ly>=S.sy&&ly<=S.sy+S.sh){
+      if(ly<S.ty||ly>S.ty+S.th){
+        readScroll+=(ly<S.ty?-1:1)*(readStackH()/readRowH)*0.9;
+        clampReadScroll(); schedule();
+      }
+      sbDrag={y0:e.clientY,s0:readScroll,sb:S};
+      e.preventDefault(); return;
+    }
+  }
+  /* In the focused pile-up the names pane is one sample's label, not a list.
+     The only thing it can do is hand the list back — the depth axis and the
+     sampling note below it are captions, not controls. */
+  if(ready&&viewMode==='reads'&&readsSample!==null&&lx<NAMES_W&&ly>topH()){
+    if(ly<topH()+READ_FOCUS_H) setReadsSample(null);
+    return;
+  }
   // Grabbing a name starts a row drag; grabbing the matrix pans.
   if(ready&&lx<NAMES_W&&ly>topH()&&rowH()>=9){
     const dr=displayRowAt(ly);
@@ -6655,6 +8373,9 @@ cv.addEventListener('mousedown',e=>{
          that had no way to close it, and no way to open one either. The two have
          to move together: whichever modes drawExpandedBand runs in are the modes
          this must toggle in. */
+      // Same handle, same gesture, one view further down: in the pile-up a
+      // name click opens that sample's reads instead of a band under its row.
+      if(viewMode==='reads'){ setReadsSample(sm); return; }
       if(viewMode==='consensus'||viewMode==='nucleotides'){
         if(expanded===sm) collapseSample(); else expandSample(sm);
         return;
@@ -6695,9 +8416,15 @@ cv.addEventListener('mousedown',e=>{
     return;
   }
   downAt={x:e.clientX,y:e.clientY};
-  drag={x:e.clientX,y:e.clientY,sc:scrollCol,sr:scrollRow};
+  drag={x:e.clientX,y:e.clientY,sc:scrollCol,sr:scrollRow,rs:readScroll};
 });
 window.addEventListener('mousemove',e=>{
+  if(sbDrag){
+    const S=sbDrag.sb, travel=Math.max(1,S.sh-S.th);
+    readScroll=sbDrag.s0+((e.clientY-sbDrag.y0)/travel)*S.span;
+    clampReadScroll(); schedule();
+    return;
+  }
   if(colResize){
     /* NAMES_W grows with the column, so widening a metadata field does not eat
        the sample-name column beside it — that is what makes it read as Excel
@@ -6718,9 +8445,15 @@ window.addEventListener('mousemove',e=>{
   if(sizing){ NAMES_W=Math.max(90,Math.min(cssW-140,sizing.w+(e.clientX-sizing.x))); schedule(); return; }
   if(!drag) return;
   scrollCol=drag.sc-(e.clientX-drag.x)/cw;
-  scrollRow=drag.sr-(e.clientY-drag.y)/rowH(); schedule();
+  // Dragging the body in the pile-up moves the stack, not the sample list —
+  // there is no sample list under it to move.
+  if(viewMode==='reads'&&readsSample!==null){
+    readScroll=drag.rs-(e.clientY-drag.y)/readRowH; clampReadScroll();
+  } else scrollRow=drag.sr-(e.clientY-drag.y)/rowH();
+  schedule();
 });
 window.addEventListener('mouseup',e=>{
+  if(sbDrag){ sbDrag=null; return; }
   if(colResize){
     colResize=null; cv.style.cursor='default';
     savePresetState();          // widths ride along with the working state
@@ -6761,10 +8494,21 @@ window.addEventListener('mouseup',e=>{
           selCol=c; selVariant=null; selIrma=null;
           // The reference row draws bases in this view, so a click on it is a
           // click on a base — take the one under the pointer.
-          selNt = viewMode==='nucleotides' ? ntUnder(cx,c) : null;
+          selNt = ntAlphabet() ? ntUnder(cx,c) : null;
           renderDetail(); schedule();
         }
       } else {
+        /* In the pile-up a click picks the READ as well as the column. It is
+           the thing under the cursor and the thing the reader means: "what is
+           this one" — where it starts and stops, which strand, how well
+           aligned. The column summary is the answer to a different question and
+           was the only one on offer. Null outside the stack, so a click on the
+           focus row or the coverage strip clears it rather than leaving a read
+           lit from somewhere else. */
+        if(viewMode==='reads'&&readsSample!==null){
+          const rr=readUnder(cx,cy);
+          selRead = rr&&rr.read ? rr.read : null;
+        }
         const hit=hitAt(cx,cy);
         // An IRMA cell carries no index into V, so it must be taken before
         // anything reads hit.i.
@@ -6774,13 +8518,36 @@ window.addEventListener('mouseup',e=>{
           selCol=hit.irma.col; selSample=hit.irma.row;
           renderDetail(); schedule();
         }
+        /* A column of the pile-up with no call for this sample. It still has a
+           site panel and that is the honest answer — "nothing is called here"
+           is a finding in a view whose job is to show what the reads say. Taken
+           before hit.i, which does not exist on this shape. */
+        else if(hit&&hit.site!==undefined){
+          selIrma=null; selVariant=null; selCol=hit.site;
+          // In a base alphabet the click picked a BASE, and a band three bases
+          // wide claims two the reader did not point at.
+          selNt = ntAlphabet() ? ntUnder(cx,hit.site) : null;
+          renderDetail(); schedule();
+        }
         else if(hit){
           selIrma=null;
           selVariant=hit.i; selCol=V.col[hit.i]; selSample=V.row[hit.i];
-          if(viewMode==='nucleotides'){
-            const k=changedNt(hit.i);
+          if(ntAlphabet()){
+            /* In the pile-up the POINTER wins. Elsewhere a cell click snaps to
+               the base a call changes, because the cell is the call; here the
+               reader is pointing at one base of a stack of reads and means that
+               base, whether or not it is the one the caller reported. */
+            const k=viewMode==='reads' ? -1 : changedNt(hit.i);
             selNt = k>=0 ? k : ntUnder(cx,selCol);
           } else selNt=null;
+          // In the pile-up's sample list, a cell click picks the sample as well
+          // as the call — it is the same gesture the reader used to get here.
+          if(viewMode==='reads'&&readsSample===null) setReadsSample(V.row[hit.i]);
+          /* Say so when the call opened from the reads is one the filters are
+             hiding. The focus row has no mark at that column, so a panel
+             appearing out of an apparently empty strip needs an account of
+             itself — and the ring still draws there, which shows WHERE. */
+          if(hit.hiddenByFilters) setChip('call hidden by the current filters — opened from the reads');
           renderDetail(); schedule();
         }
         else { selIrma=null; selVariant=null; selCol=null; selNt=null; renderDetail(); schedule(); }
@@ -6801,14 +8568,63 @@ document.getElementById('conssrc').onchange=async e=>{
   syncConsControls(); renderDetail(); schedule();
 };
 document.getElementById('cthin').onchange=e=>{ markThin=e.target.checked; schedule(); };
-document.getElementById('zoomin').onclick=()=>{cw=Math.min(40,cw*1.4);userZoomed=true;schedule();};
-document.getElementById('zoomout').onclick=()=>{cw=Math.max(0.04,cw/1.4);userZoomed=true;schedule();};
+/* Back to the shipped layout, and nothing else. Everything here is a SIZE the
+   reader can drag or scroll into a corner — the names pane, the metadata
+   columns, the zoom, the read row height — and none of it is a finding. The
+   filters, the QC overrides and the theme are decisions, so they stay. */
+document.getElementById('layout-reset').onclick=()=>{
+  NAMES_W=180; metaColW.clear();
+  rowPx=0; userZoomed=false;
+  scrollCol=0; scrollRow=0; readScroll=0;
+  savePresetState();
+  /* resize() recomputes cssW/cssH from the pane and, with userZoomed cleared,
+     fits — so it must run BEFORE the read row height is squared off it. Doing
+     it the other way round squares against the zoom being thrown away, which
+     on a 138 px column pinned the rows to the 28 px ceiling. */
+  resize();
+  readRowH = squareCells ? squareReadRowH() : 8;
+  syncReadControls();
+  schedule();
+  setChip('layout reset — browser zoom is separate (⌘0)');
+};
+// The buttons follow the same two rules the wheel does: the pile-up's own zoom
+// ceiling, and square cells squaring the read row rather than a matrix row.
+document.getElementById('zoomin').onclick=()=>{
+  cw=Math.min(maxCW(),cw*1.4); userZoomed=true;
+  if(squareCells){ if(viewMode==='reads') { readRowH=squareReadRowH(); syncReadControls(); }
+                   else rowPx=squareRowPx(); }
+  schedule();
+};
+document.getElementById('zoomout').onclick=()=>{
+  cw=Math.max(0.04,cw/1.4); userZoomed=true;
+  if(squareCells){ if(viewMode==='reads') { readRowH=squareReadRowH(); syncReadControls(); }
+                   else rowPx=squareRowPx(); }
+  schedule();
+};
 document.getElementById('fit').onclick=fit;
 document.getElementById('export').onclick=doExport;
 // Escape closes the export dialog. The app had no keyboard handling at all
 // before this, so it is scoped to the dialog rather than made a global map.
-window.addEventListener('keydown',e=>{ if(e.key==='Escape') closeExportDialog(); });
+window.addEventListener('keydown',e=>{
+  if(e.key!=='Escape') return;
+  // The dialog first — it is modal, so it owns Escape while it is up.
+  const dlg=document.getElementById('exportdlg');
+  if(dlg){ closeExportDialog(); return; }
+  if(viewMode==='reads'&&readsSample!==null) setReadsSample(null);
+});
 window.addEventListener('resize',resize);
+/* A window resize is not the only thing that changes the canvas's box: the
+   detail panel collapsing, the header wrapping to a second row, or the sidebar
+   gaining a section all resize #wrap while `resize` never fires. The canvas
+   then keeps a stale explicit width and spills over the panel beside it. */
+if(window.ResizeObserver){
+  let last=0;
+  new ResizeObserver(()=>{
+    const w=wrapEl.clientWidth+wrapEl.clientHeight*100000;
+    if(w===last) return;               // observers fire on their own writes too
+    last=w; resize();
+  }).observe(wrapEl);
+}
 resize();
 
 try{
@@ -6861,12 +8677,57 @@ function placeModeSwitch(){
        does not encode. The ntlegend's own h4/.lramp/.lticks are excluded
        alongside sellegend's for the same reason. */
     const ntl0=document.getElementById('ntlegend');
-    const ownLegend = viewMode==='selection'||viewMode==='nucleotides';
+    // The pile-up joins them in the nucleotide alphabet, where its cells are
+    // bases too. In amino acids its focus row IS coloured by frequency, so the
+    // ramp stays up there.
+    const ownLegend = viewMode==='selection'||ntAlphabet();
     if(freq&&freq.parentElement) freq.parentElement.querySelectorAll('h4,.lramp,.lticks')
       .forEach(el=>{ if(!sel.contains(el)&&!(ntl0&&ntl0.contains(el)))
         el.style.display = ownLegend?'none':''; });
   }
-  for(const b of [...l.children,...r.children]) b.classList.toggle('on',b.dataset.v===viewer);
+  /* The alphabet axis stays LIVE in the pile-up. It was greyed on the argument
+     that a read carries bases and has no amino-acid form — which is wrong: a
+     read spans about fifty codons in the product's frame, and "does this read
+     carry the nonsynonymous change" is the question most of this app is for.
+     So both alphabets draw. Bases mark the base that disagrees; amino acids
+     mark the codon whose RESIDUE disagrees, which is a strictly smaller set —
+     the synonymous reads go clean, and that difference is the whole reason to
+     have the switch. Only `selection` has nothing per-read to say. */
+  for(const b of [...l.children,...r.children]){
+    const dead = viewMode==='reads' && b.dataset.v==='selection';
+    b.disabled=dead;
+    b.style.cursor=dead?'not-allowed':'';
+    if(dead) b.title='Selection is a per-codon statistic over samples — a single read has none';
+    else b.removeAttribute('title');
+    b.classList.toggle('on',b.dataset.v===viewer);
+  }
+  l.style.opacity=r.style.opacity='';
+  /* The two view-specific sections. bandsec belongs to the expanded band, which
+     only the two band views draw; readsec belongs to the pile-up. */
+  { const bs=document.getElementById('bandsec');
+    if(bs) bs.hidden = !(viewMode==='consensus'||viewMode==='nucleotides');
+    const rs=document.getElementById('readsec');
+    if(rs){
+      rs.hidden = viewMode!=='reads';
+      if(!rs.hidden){
+        const sw=document.getElementById('readramp');
+        if(sw) ['A','C','G','T'].forEach((b,i)=>{
+          if(sw.children[i]) sw.children[i].style.background=NT_COL[b]; });
+        const kn=document.getElementById('readntkey'), ka=document.getElementById('readaakey'),
+              kq=document.getElementById('readqualkey');
+        if(kn) kn.hidden=!ntAlphabet();
+        if(ka) ka.hidden=ntAlphabet();
+        if(kq) kq.hidden=!readQual;
+        const nt=document.getElementById('readnote');
+        if(nt) nt.innerHTML = readsSample===null
+          ? 'No sample open. Click a row — name or cell — and its reads take over the view.'
+          : `<b>${esc(names[readsSample])}</b> · wheel zooms as everywhere else; `+
+            `${navigator.platform.indexOf('Mac')>=0?'⌘':'ctrl'}+wheel (or alt) `+
+            'goes down the stack, shift+wheel pans across, and the wheel over '+
+            'this pane scrolls too. Escape or ✕ returns the list.';
+      }
+    }
+  }
   /* The call filters do not apply to the consensus view and never did —
      buildConsensus reads every call above 50% regardless of them. Leaving the
      controls live made them look ignored, which is how this surfaced: a reader
@@ -6915,7 +8776,9 @@ function placeModeSwitch(){
       b.title = !active ? 'Selection is per codon — it has no low-frequency or consensus form'
               : b.dataset.vv==='lowfreq'
                 ? 'Every call above the current filters'
-                : 'Only what reached the sample’s consensus';
+              : b.dataset.vv==='consensus'
+                ? 'Only what reached the sample’s consensus'
+                : 'The aligned reads behind one sample, stacked';
       b.classList.toggle('on', active && b.dataset.vv===variantView);
     }
   }
@@ -6924,7 +8787,7 @@ function placeModeSwitch(){
   // the residue-scheme control has nothing to colour and the ATGC key replaces it.
   const ntl=document.getElementById('ntlegend'), aaf=document.getElementById('aaschemefld');
   if(ntl){
-    ntl.hidden = viewMode!=='nucleotides';
+    ntl.hidden = !ntAlphabet();
     // Painted FROM NT_COL rather than repeated in CSS, so the key and the cells
     // can never disagree — the same reason the frequency swatches follow RAMPS.
     const sw=document.getElementById('ntramp');
@@ -6932,7 +8795,7 @@ function placeModeSwitch(){
       if(sw.children[i]) sw.children[i].style.background=NT_COL[b];
     });
   }
-  if(aaf) aaf.style.display = viewMode==='nucleotides' ? 'none' : '';
+  if(aaf) aaf.style.display = ntAlphabet() ? 'none' : '';
 }
 function dpanelW(){ const d=document.getElementById('detail');
   return d&&!d.classList.contains('off')?d.getBoundingClientRect().width:0; }
@@ -7181,6 +9044,17 @@ function setViewMode(m){
   if(m===viewMode) return;
   const wasBand = viewMode==='consensus'||viewMode==='nucleotides';
   viewMode=m;
+  /* Leaving the pile-up drops the focus. Keeping it would mean coming back to a
+     sample the reader chose in a different context, and the first thing they
+     would see on returning is one row where they left a matrix. */
+  if(m!=='reads'){
+    readsSample=null; readScroll=0; readErr=null; selRead=null; hoverRead=null;
+    // The pile-up zooms further than the matrix does. Leaving it with cw above
+    // the matrix ceiling would strand the view past a limit its own buttons
+    // enforce — zoom out would work, zoom in would appear dead.
+    if(cw>40){ cw=40; if(squareCells) rowPx=squareRowPx(); }
+  }
+  else if(squareCells){ readRowH=squareReadRowH(); syncReadControls(); }
   // Nucleotides shows the same expanded band as consensus, so leaving that mode
   // for this one must not silently close the row the reader had opened.
   if(m!=='consensus'&&m!=='nucleotides'){ expanded=null; pile=null; }
@@ -7188,9 +9062,10 @@ function setViewMode(m){
   // opened in. Refresh it against the current view rather than leaving a stale
   // one on screen — same work expandSample does, without the toggle.
   else if(wasBand&&expanded!==null) refreshBand();
-  // A base selection belongs to the nucleotides view; anywhere else selCol is
-  // the codon and a stored third would narrow the next selection band silently.
-  if(m!=='nucleotides') selNt=null;
+  // A base selection belongs to a base alphabet — which is now the nucleotides
+  // view OR the pile-up in nucleotides. Anywhere else selCol is the codon and a
+  // stored third would narrow the next selection band silently.
+  if(!ntAlphabet()) selNt=null;
   // Not persisted: the view always opens at amino acids · low frequency — see
   // the comment beside that default. A key nothing reads only invites a future
   // reader to believe it means something.
@@ -7201,18 +9076,44 @@ function setViewMode(m){
 }
 /* The two controls set their own axis and let setViewMode() work out the rest,
    so there is still exactly one place that decides what a mode change does. */
+/* The alphabet the pile-up borrowed, to be handed back on the way out. A
+   pile-up is read at the base, so it opens in nucleotides whatever the matrix
+   was in — but silently leaving the reader in a different alphabet than they
+   started in is a state change they did not ask for, so it is only a loan. */
+let readAlphaLoan=null;
 function setViewer(v){
   if(v===viewer) return;
+  readAlphaLoan=null;            // chosen by hand — there is nothing to give back
   viewer=v;
   // Landing on a combination that is not built yet would show the wrong view
   // silently. Move to the one that is, rather than drawing something the
   // selector does not claim.
   if(hasVariantView(v)&&!vvEnabled(v,variantView)) variantView='consensus';
-  setViewMode(deriveViewMode());
+  const m=deriveViewMode();
+  if(m!==viewMode){ setViewMode(m); return; }
+  /* SAME viewMode, different ALPHABET — and this is the same trap
+     setVariantView documents below, arriving from the other axis. The pile-up
+     derives to 'reads' in both alphabets, so setViewMode's `m===viewMode`
+     early return swallows the change: `viewer` updates, nothing repaints, and
+     the button highlight never moves. */
+  selNt=null;                    // a third belongs to the alphabet that set it
+  if(squareCells){ readRowH=squareReadRowH(); syncReadControls(); }
+  placeModeSwitch(); schedule();
 }
 function setVariantView(vv){
   if(vv===variantView||!hasVariantView(viewer)) return;
+  const wasReads = variantView==='reads';
   variantView=vv;
+  /* Borrow and return the alphabet. Done HERE and not in setViewMode, because
+     setViewMode is handed an already-derived mode: changing `viewer` after the
+     derivation would leave the two disagreeing about what is on screen. */
+  if(vv==='reads'){
+    readAlphaLoan = viewer!=='nucleotides' ? viewer : null;
+    viewer='nucleotides';
+  } else if(wasReads){
+    if(readAlphaLoan&&viewer==='nucleotides') viewer=readAlphaLoan;
+    readAlphaLoan=null;
+  }
   const m=deriveViewMode();
   if(m!==viewMode){ setViewMode(m); return; }
   /* SAME viewMode, different source — and this branch is why the click used to
@@ -7228,7 +9129,33 @@ function setVariantView(vv){
 }
 for(const id of ['modeL','modeR'])
   document.getElementById(id).addEventListener('click',e=>{
-    const b=e.target.closest('button'); if(b) setViewer(b.dataset.v); });
+    const b=e.target.closest('button'); if(b&&!b.disabled) setViewer(b.dataset.v); });
+
+/* ---- pile-up controls -----------------------------------------------------
+   The cap is part of the scan key, so changing it re-scans rather than
+   re-slicing a store built at a different rate — a sample thinned to 1-in-16
+   cannot be un-thinned, and pretending otherwise would leave the gutter stating
+   a ratio the picture no longer has. */
+document.getElementById('readcap').onchange=e=>{
+  readCap=+e.target.value; readScroll=0; schedule(); };
+document.getElementById('readrh').oninput=e=>{
+  readRowH=+e.target.value;
+  document.getElementById('vreadrh').textContent=readRowH;
+  clampReadScroll(); schedule();
+};
+document.getElementById('readstrand').onchange=e=>{ readStrand=e.target.checked; schedule(); };
+document.getElementById('readclips').onchange=e=>{ readClips=e.target.checked; schedule(); };
+document.getElementById('readqual').onchange=e=>{
+  readQual=e.target.checked; placeModeSwitch(); schedule(); };
+/* The control item 0 asked for. `showPile` had no way to be set since the depth
+   profile took the band's first-click slot, so the residue distributions behind
+   it were unreachable from the UI. refreshBand rather than a bare repaint: the
+   two contents are built from different files and the band caches what it drew. */
+document.getElementById('bandmode').onchange=e=>{
+  showPile = e.target.value==='pile';
+  if(expanded!==null) refreshBand();
+  schedule();
+};
 document.getElementById('vvR').addEventListener('click',e=>{
   const b=e.target.closest('button'); if(b&&!b.disabled) setVariantView(b.dataset.vv); });
 /* 'selection' is deliberately NOT restorable — it reads a 57 MB codon table, and
@@ -7265,7 +9192,10 @@ viewMode=deriveViewMode();
 const TAURI = typeof window.__TAURI__ !== 'undefined';
 async function tauriBootstrap(root){
   const { invoke } = window.__TAURI__.core;
+  loadShow('opening the run','listing files\u2026',3);
   const rels = await invoke('list_files', { root });      // scratch already excluded
+  loadShow('opening the run',`${rels.length.toLocaleString()} files`,14);
+  await new Promise(r=>setTimeout(r,0));
   const m = new Map();
   for(const rel of rels){
     m.set(rel, {
