@@ -1,12 +1,12 @@
 # Read-level probes
 
-Written 2026-08-13 to settle item 0d — six low-frequency calls IRMA made that
-none of LoFreq, iVar or GATK4 reported. They read a run directory in place and
-print summaries; none of them writes into the run except `depth_band.py`, which
+Written 2026-08-13 to settle item 0d — six low-frequency calls that IRMA made and
+that none of LoFreq, iVar, or GATK4 reported. They read a run directory in place and
+print summaries. None of them writes into the run, except `depth_band.py`, which
 takes an explicit output path.
 
 All of them need `samtools` on `PATH`. `<run_dir>` is a Flumina output
-directory (the one holding `BAM_files/`, `IRMA_results/`, `reference.fa`).
+directory (the one that holds `BAM_files/`, `IRMA_results/`, and `reference.fa`).
 
 | script | question it answers |
 |---|---|
@@ -56,10 +56,10 @@ python3 depth_band.py "$RUN" "$RUN/depth_profiles/mindepth_blind_band.tsv"
 
 ## Reproducing the LoFreq `-B` measurement
 
-Does disabling BAQ in `lofreq call` recover real variants or manufacture them?
-`baq_support.py` characterises the calls `-B` adds; `baq_baseline.py` compares
-them against the calls LoFreq already makes, which is the only way a support
-rate means anything.
+Does `-B` in `lofreq call` recover real variants, or does it make false ones?
+`baq_support.py` describes the calls that `-B` adds. `baq_baseline.py` compares
+them against the calls LoFreq already makes. This comparison is the only way a support
+rate has meaning.
 
 LoFreq is not installed on the laptop, so the calling runs in the image. The
 run directory is mounted read-only — nothing here writes into it.
@@ -89,8 +89,8 @@ python3 baq_baseline.py "$RUN" "$OUT" $(tr '\n' ' ' < "$OUT/samples.txt")
 
 
 
-`--entrypoint bash` is required: the image's entrypoint is the Flumina launcher,
-so a bare `docker run ... lofreq` prints the launcher's help instead of running
+`--entrypoint bash` is required: the image's entrypoint is the Flumina launcher.
+So a bare `docker run ... lofreq` prints the launcher's help and does not run
 LoFreq.
 
 (Details of an unpublished run were removed here.)
