@@ -204,6 +204,16 @@
   .nocov{font:9px ui-monospace,monospace;color:var(--bad);border:1px solid #7a3030;
     border-radius:4px;padding:0 3px;margin-left:4px;white-space:nowrap;
     background:rgba(224,108,108,.10)}
+  /* Third of the same family, and the one that needs the most care to read.
+     There ARE reads here — often hundreds — but not enough of them survived
+     overlap removal and the quality floor for any caller to be allowed to
+     evaluate the position. So it is neither "measured and clean" nor "no data":
+     it is unexamined, at a depth that looks perfectly adequate in the coverage
+     track. --warn rather than --bad because the reads exist; the objection is
+     to concluding anything from their silence. */
+  .noeval{font:9px ui-monospace,monospace;color:var(--warn);border:1px solid #6b5410;
+    border-radius:4px;padding:0 3px;margin-left:4px;white-space:nowrap;
+    background:rgba(250,178,25,.09)}
   /* The site listing is UNFILTERED in the nucleotides view, so it carries rows
      the variants view hides. Dimming them keeps that difference on screen: the
      reader clicked something painted and gets it, without the panel quietly
@@ -2044,6 +2054,18 @@ function codonNtFor(product, codonIdx){
    Read lazily and cached per sample, like the VCFs — 143 files of ~13k lines is
    not something to load at open for a panel most readers never scroll to. */
 let depthCache=new Map();     // sample -> Map(segment -> Int32Array by 1-based pos) | null
+/* Column 4, kept beside depthCache rather than folded into it so nothing that
+   already reads a raw depth changes shape.
+
+   Column 3 is every aligned base; column 4 is what the variant callers could
+   actually see once overlapping mates are zeroed and the quality floor applied.
+   The two answer different questions — "is there any read here" against "did a
+   caller get to evaluate this" — and only the second explains a marker that no
+   caller reported at what looks like ample depth.
+
+   Null for runs whose depth files are three-column. That is not a fallback to
+   the raw number: the question simply cannot be asked, and it is left unasked. */
+let visDepthCache=new Map();  // sample -> Map(segment -> Int32Array) | null
 function findDepthFile(sample){
   const leaf=`/${sample}.depth`;
   const exact='depth_profiles'+leaf;
@@ -2054,8 +2076,9 @@ function findDepthFile(sample){
 async function loadDepth(sample){
   if(depthCache.has(sample)) return depthCache.get(sample);
   const f=findDepthFile(sample);
-  if(!f){ depthCache.set(sample,null); return null; }
+  if(!f){ depthCache.set(sample,null); visDepthCache.set(sample,null); return null; }
   const bySeg=new Map();
+  let byVis=null;
   try{
     /* Two passes: size each segment, then fill. An Int32Array per segment beats
        a Map of 13k string keys on both memory and lookup, and the depth track
@@ -2063,23 +2086,52 @@ async function loadDepth(sample){
     const text=await f.text();
     const lines=text.split(/\r?\n/);
     const max=new Map();
+    let hasVis=false;
     for(const ln of lines){
       if(!ln) continue;
       const t=ln.split('\t'); if(t.length<3) continue;
       const s=shortLocus(t[0]), p=+t[1];
       if(!(p>0)) continue;
+      if(t.length>=4) hasVis=true;
       if(!max.has(s)||p>max.get(s)) max.set(s,p);
     }
     for(const [s,n] of max) bySeg.set(s,new Int32Array(n+1).fill(-1));
+    if(hasVis){
+      byVis=new Map();
+      for(const [s,n] of max) byVis.set(s,new Int32Array(n+1).fill(-1));
+    }
     for(const ln of lines){
       if(!ln) continue;
       const t=ln.split('\t'); if(t.length<3) continue;
       const s=shortLocus(t[0]), p=+t[1], d=+t[2];
       const arr=bySeg.get(s); if(arr&&p>0&&p<arr.length) arr[p]=d;
+      if(byVis&&t.length>=4){
+        const v=byVis.get(s); if(v&&p>0&&p<v.length) v[p]=+t[3];
+      }
     }
-  }catch(e){ depthCache.set(sample,null); return null; }
+  }catch(e){ depthCache.set(sample,null); visDepthCache.set(sample,null); return null; }
   depthCache.set(sample,bySeg);
+  visDepthCache.set(sample,byVis);
   return bySeg;
+}
+/* The run's own MIN_DEPTH, from the config the pipeline publishes beside its
+   results. Read from the run rather than assumed, because "below the floor" is
+   only meaningful against the floor this run actually used.
+
+   Null when there is no config to read — an older run, or a directory of VCFs
+   that never came from Flumina. Everything that depends on it then stays quiet
+   rather than guessing 100. */
+let runMinDepth=null, runMinDepthTried=false;
+async function loadRunMinDepth(){
+  if(runMinDepthTried) return runMinDepth;
+  runMinDepthTried=true;
+  const f=findFile('pipeline_info/config.cfg','config.cfg');
+  if(!f) return null;
+  try{
+    const m=/^\s*MIN_DEPTH\s*=\s*"?(\d+)"?/m.exec(await f.text());
+    if(m) runMinDepth=+m[1];
+  }catch(e){ /* unreadable is the same as absent */ }
+  return runMinDepth;
 }
 /* Synchronous read of whatever loadDepth has already cached — the panel loads it
    before composing, exactly as it does for the LoFreq VCF and the iVar TSV.
@@ -2091,8 +2143,8 @@ async function loadDepth(sample){
 
    -1 in the array is "the depth file did not mention this position", which is
    different from a depth of 0 and is returned as null rather than as zero. */
-function markerCodonDepth(sample, product, residue){
-  const bySeg=depthCache.get(sample);
+function codonDepthFrom(cache, sample, product, residue){
+  const bySeg=cache.get(sample);
   if(!bySeg||!(residue>0)) return null;
   const nts=codonNtFor(product, residue-1);
   if(nts.length!==3) return null;
@@ -2107,13 +2159,21 @@ function markerCodonDepth(sample, product, residue){
   }
   return lo===Infinity?null:lo;
 }
+function markerCodonDepth(sample, product, residue){
+  return codonDepthFrom(depthCache, sample, product, residue);
+}
+/* The same codon, asked of column 4. Null when the run's depth files never
+   carried it, which is a different answer from zero and must stay one. */
+function markerCodonVisible(sample, product, residue){
+  return codonDepthFrom(visDepthCache, sample, product, residue);
+}
 /* Every marker token resolved to a codon depth. A compound marker
    ("HA1-5:G224S,PB2:E627K") is ONE marker made of several substitutions, so it
    is only as supported as its least-covered component — the same rule
    markerOffSubtype applies to confirmability, for the same reason. */
 function markerSupport(sample, marker){
   if(!fmMap) return null;
-  let worst=null, unmapped=false;
+  let worst=null, worstVis=null, unmapped=false;
   for(const tok of String(marker||'').split(',')){
     const g=FM_RE.exec(tok.trim()); if(!g){ unmapped=true; continue; }
     const hit=fmPlace(g[1], +g[3]);
@@ -2121,8 +2181,13 @@ function markerSupport(sample, marker){
     const d=markerCodonDepth(sample, hit.product, hit.pos);
     if(d===null){ unmapped=true; continue; }
     if(worst===null||d<worst) worst=d;
+    /* Tracked separately and by the same worst-component rule. It stays null if
+       ANY component lacks a visible depth, so a compound marker never gets
+       judged on the half of itself that happened to be measurable. */
+    const v=markerCodonVisible(sample, hit.product, hit.pos);
+    if(v!==null&&(worstVis===null||v<worstVis)) worstVis=v;
   }
-  return {depth:worst, unmapped};
+  return {depth:worst, visible:worstVis, unmapped};
 }
 
 /* ---- dev bootstrap ---------------------------------------------------------
@@ -2209,7 +2274,13 @@ async function devBootstrap(root='run'){
                'variant_analysis/flumut_lowfreq/markers.tsv',
                'variant_analysis/flumut_lowfreq/markers_all.tsv',
                // per-codon piN/piS; big, and only read when the panel asks
-               'snpGenie_results/codon_results_summary.csv'];
+               'snpGenie_results/codon_results_summary.csv',
+               /* The config the run was executed with, for MIN_DEPTH. The
+                  pipeline_info copy is the one the pipeline generated and is
+                  authoritative; the root copy is the config a user handed in.
+                  Without one of them the "not evaluated" flag cannot know what
+                  floor to judge against and stays off. */
+               'pipeline_info/config.cfg', 'config.cfg'];
   for(const p of probe){
     try{ const r=await fetch(`${root}/${p}`,{method:'HEAD',cache:'no-store'}); if(r.ok) m.set(p,shim(`${root}/${p}`)); }catch(e){}
   }
@@ -2477,6 +2548,10 @@ async function loadRun(){
     // gatkCache too, or a second run shows the first run's FILTER values
     hidden=new Set(); vcfCache=new Map(); gatkCache=new Map(); ivarCache=new Map();
     depthCache=new Map();       // or a second run reports the first run's coverage
+    // Both halves of the depth answer, and the floor they are judged against —
+    // a stale MIN_DEPTH would flag the new run's markers against the old run's
+    // threshold, which is worse than not flagging them at all.
+    visDepthCache=new Map(); runMinDepth=null; runMinDepthTried=false;
     /* The IRMA grids are sized NT*NC and keyed by this run's row order, so
        carrying them into a second run is not merely stale — it indexes the new
        run's samples with the old run's rows. Cleared here for the same reason
@@ -5533,14 +5608,28 @@ function flumutSection(i){
          Sorted ahead of the off-subtype tag: "never measured" is a stronger
          objection than "measured against the wrong ruler". */
       const sname=names[V.row[i]];
+      /* noeval is deliberately NOT a weaker nocov. nocov says the reference base
+         stood in for absent data; noeval says the reads are there and no caller
+         was permitted to look at them, because the depth they see after overlap
+         removal and the quality floor falls under the run's MIN_DEPTH. A reader
+         checking the coverage track sees ample depth in both cases and would
+         otherwise read the silence as a negative result.
+
+         Only asked when the run published column 4 AND its own MIN_DEPTH; with
+         either missing the flag never appears, rather than being guessed. */
       const ord=extra.map(([m,d])=>{ const s=markerSupport(sname,m);
-                   return {m,d,off:markerOffSubtype(m), nocov:!!(s&&s.depth===0)}; })
-                     .sort((a,b)=>(b.nocov-a.nocov)||(a.off-b.off));
+                   const nocov=!!(s&&s.depth===0);
+                   return {m,d,off:markerOffSubtype(m), nocov,
+                           noeval:!nocov&&!!(s&&s.depth>0&&s.visible!==null&&
+                                             runMinDepth!==null&&s.visible<runMinDepth)}; })
+                     .sort((a,b)=>(b.nocov-a.nocov)||(b.noeval-a.noeval)||(a.off-b.off));
       const nNo=ord.filter(e=>e.nocov).length;
+      const nNe=ord.filter(e=>e.noeval).length;
       const list=ord.slice(0,6).map(e=>
         `<b>${esc(e.m)}</b> ${esc([...e.d.effects][0]||'')}`+
         (e.off?`<span class="unconf">unconfirmed</span>`:'')+
-        (e.nocov?`<span class="nocov">no coverage</span>`:'')).join('<br>');
+        (e.nocov?`<span class="nocov">no coverage</span>`:'')+
+        (e.noeval?`<span class="noeval">not evaluated</span>`:'')).join('<br>');
       html+=`<div class="note" style="margin-top:8px">`+
         `<span class="warn">+${extra.length}</span> more below consensus, from the `+
         `low-frequency screen:<br>${list}`+
@@ -5555,7 +5644,13 @@ function flumutSection(i){
              `with NO reads in this sample.</span> The reference base stood in for data that `+
              `is not there, so ${nNo>1?'those markers are':'that marker is'} the reference `+
              `talking rather than the sample. Absence of a marker at such a position is not `+
-             `evidence of absence either.`:'')+`</div>`;
+             `evidence of absence either.`:'')+
+        (nNe?`<br><br><span class="warn">${nNe} of these ${nNe>1?'rest':'rests'} on positions `+
+             `no caller evaluated.</span> There are reads there, but after overlapping mates `+
+             `are discounted and the quality floor applied, fewer than MIN_DEPTH=${runMinDepth} `+
+             `remain — so every caller skipped ${nNe>1?'those positions':'that position'} `+
+             `without reporting anything. The coverage track will still look healthy. `+
+             `${nNe>1?'They are':'It is'} unexamined rather than negative.`:'')+`</div>`;
     }
   } else if(fmLowState==='nofile'){
     html+=`<div class="note" style="margin-top:8px">a flumut_lowfreq directory exists but `+
@@ -5913,6 +6008,9 @@ async function renderVariant(el,i){
      report every marker as unmeasured on the first click and supported on the
      second. */
   await loadDepth(names[V.row[i]]);
+  // Same reason, one level up: the "not evaluated" flag needs the run's own
+  // floor, and an unawaited read would show it on the second click only.
+  await loadRunMinDepth();
   const p=PROD.get(V.prod[i]);
   const refAA=V.ref[i]===255?'?':AAS[V.ref[i]], altAA=V.alt[i]===255?'?':AAS[V.alt[i]];
   const cur=curated.get(V.col[i]);
