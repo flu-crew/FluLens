@@ -83,6 +83,7 @@ public reference and ORF code:
 
 ```bash
 Rscript tools/make_example_run.R --flumina /path/to/Flumina
+python3 tools/make_example_bams.py --out example_run     # needs samtools
 python3 tools/make_manifest.py example_run
 ```
 
@@ -90,6 +91,11 @@ It needs R with Biostrings, and a Flumina checkout for `Scripts/fluORFs.R`,
 `reference.fa` and `curated_database.csv`. Using the pipeline's own annotation
 code is deliberate: a hand-written fixture would drift from Flumina the moment
 either changed.
+
+`make_example_bams.py` must run **after** the R script, not before: it reads the
+VCFs and IRMA coverage tables that script writes and derives every read from
+them, which is what keeps the pile-up agreeing with the table beside it. It only
+writes `A4`'s three samples — see `example_run/README.md` for why.
 
 ## Things that will bite you
 

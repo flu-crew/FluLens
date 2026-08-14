@@ -18,6 +18,10 @@ _site/
 # manifest in preference to walking the directory.
 example_run/manifest.json
 
+# samtools writes this the first time anything passes `-f example_run/reference.fa`
+# — validating the BAMs is enough to create it. Generated, not source.
+example_run/reference.fa.fai
+
 # Copies the release workflow makes at the repository root before uploading them
 # as release assets.
 /flulens.html
@@ -28,6 +32,10 @@ example_run/manifest.json
 # create them locally, never commit them.
 prototypes/run
 prototypes/meta.csv
+# ...and one that points INTO the repository, so the dev server can serve
+# example_run at ?run=example. Harmless, but still a symlink, and a committed
+# one would break on any checkout that resolves it differently.
+prototypes/example
 
 # Local editor/agent config holding machine-specific absolute paths.
 .claude/
