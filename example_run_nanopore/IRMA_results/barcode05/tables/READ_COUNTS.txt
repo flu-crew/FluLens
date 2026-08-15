@@ -1,0 +1,9 @@
+Record	Count
+total	3382
+mapped	3212
+A_HA	568
+A_MP	327
+A_NA	470
+A_NP	499
+A_PB1	758
+A_PB2	760

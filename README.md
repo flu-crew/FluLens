@@ -4,9 +4,10 @@ FluLens is a viewer for influenza variant calls. You can inspect and filter them
 The grid shows **samples × codons**, one cell per call. FluLens colours each cell by
 allele frequency, or shows it as a consensus.
 
-FluLens reads the output of [Flumina](https://github.com/flu-crew/Flumina). It helps you
-answer two questions more quickly than a spreadsheet: *is this variant real?* and
-*is this sample good enough to keep?*
+FluLens reads the output of [Flumina](https://github.com/flu-crew/Flumina) (Illumina) and
+[FluPore](https://github.com/flu-crew/FluPore) (Nanopore). It helps you answer two
+questions more quickly than a spreadsheet: *is this variant real?* and *is this sample
+good enough to keep?*
 
 **[▶ Try it in your browser](https://flu-crew.github.io/FluLens/?run=example_run)** —
 no installation, with example data.
@@ -28,7 +29,7 @@ There are three ways to run FluLens. They are the same application. Use the one 
 ### 1. In a browser
 
 Open **<https://flu-crew.github.io/FluLens/>**. Click **Open run folder…**. Then
-select a Flumina output folder.
+select a Flumina or FluPore output folder.
 
 FluLens uploads nothing. The page reads the folder on your machine through the browser's
 file picker. See [Your data stays on your machine](#your-data-stays-on-your-machine).
@@ -62,16 +63,16 @@ version is the better choice.
 
 ---
 
-## Try it with the example dataset
+## Try it with the example datasets
 
-You do not need a pipeline run to see FluLens. `example_run/` is a small
-**synthetic** Flumina output: twelve samples, 1,378 calls, and all twelve gene
-products.
+You do not need a pipeline run to see FluLens. The repository ships two synthetic
+examples — one from each supported pipeline.
 
-**[▶ Open it live, nothing to download](https://flu-crew.github.io/FluLens/?run=example_run)**
+### Flumina example (Illumina)
 
-You can also load it on your machine. This is a good way to test the desktop app
-and the folder picker before you use real data:
+`example_run/` — twelve samples, 1,378 calls, all twelve gene products.
+
+**[▶ Open it live](https://flu-crew.github.io/FluLens/?run=example_run)**
 
 | Get it | How |
 |---|---|
@@ -79,26 +80,41 @@ and the folder picker before you use real data:
 | [`example_run.zip`](https://github.com/flu-crew/FluLens/releases/latest) | attached to every release |
 | [Download the whole repository](https://github.com/flu-crew/FluLens/archive/refs/heads/main.zip) | `example_run/` is inside it |
 
+The example gives the controls something to act on. It contains a library that
+fails QC, two segments that did not assemble, GATK4 genotype calls with no LoFreq
+counterpart, and skewed strand balance on some of the calls. All twelve samples
+include reads, so the pile-up opens on the example. `example_run/README.md`
+explains the design.
+
+### FluPore example (Nanopore)
+
+`example_run_nanopore/` — five samples, single-end ONT reads at ~60–80× depth.
+
+**[▶ Open it live](https://flu-crew.github.io/FluLens/?run=example_run_nanopore)**
+
+| Get it | How |
+|---|---|
+| [Browse it on GitHub](https://github.com/flu-crew/FluLens/tree/main/example_run_nanopore) | FluPore output converted for FluLens |
+| [Download the whole repository](https://github.com/flu-crew/FluLens/archive/refs/heads/main.zip) | `example_run_nanopore/` is inside it |
+
+This is synthetic data. Do not interpret the variant calls as real observations.
+`example_run_nanopore/README.md` has more detail.
+
+### Loading an example on your machine
+
 ```bash
 git clone https://github.com/flu-crew/FluLens.git
 # then in FluLens: Open run folder… -> FluLens/example_run
+#                                   or FluLens/example_run_nanopore
 ```
-
-The example gives the controls something to act on. It contains a library that
-fails QC, two segments that did not assemble, GATK4 genotype calls with no LoFreq
-counterpart, and skewed strand balance on some of the calls.
-
-All twelve samples also include **reads**, so the pile-up opens on the example.
-Click any sample in the `read pile-up` view. The BAMs are capped at ~200×
-depth to keep them small. A real `A1` BAM would be 86 MB. The allele fractions stay
-correct; only the read count is thinned. `example_run/README.md` explains why.
 
 ---
 
 ## What to load into FluLens
 
-Load a Flumina output folder — the one that contains `variant_analysis/`. Only the first
-file is required; the rest are optional. The sidebar reports which files FluLens found:
+Load a Flumina or FluPore output folder — the one that contains `variant_analysis/`.
+Only the first file is required; the rest are optional. The sidebar reports which files
+FluLens found:
 
 | Path | What it adds |
 |---|---|
@@ -108,8 +124,10 @@ file is required; the rest are optional. The sidebar reports which files FluLens
 | `variant_analysis/curated_amino_acids.txt` | ▲ ticks marking curated sites |
 | `variant_analysis/flumut/markers.tsv` | FluMut marker screening |
 | `variant_analysis/flumut_lowfreq/` | markers present *below* consensus |
-| `vcf_files/<sample>/lofreq-called-variants.vcf` | strand balance and read counts, read on demand |
+| `vcf_files/<sample>/lofreq-called-variants.vcf` | strand balance and read counts (Flumina) |
+| `vcf_files/<sample>/ivar-called-variants.tsv` | strand balance and read counts (FluPore) |
 | `IRMA_results/<sample>/tables/READ_COUNTS.txt` | the per-segment coverage strip |
+| `BAM_files/<sample>/final_mapped_reads.bam` | read pile-up |
 | `wfabc*/FIT_results.csv` | selection coefficients and drift tests |
 
 You can load a **metadata CSV** on its own if the run had no metadata. The sidebar
@@ -117,7 +135,7 @@ reports how many samples the join matched. That number is the one to read: a joi
 matched half your samples looks the same as a join that matched all of them.
 
 If you have no run of your own, the
-[example dataset](#try-it-with-the-example-dataset) above fills every one of these.
+[example datasets](#try-it-with-the-example-datasets) above fill most of these.
 
 ---
 
@@ -236,8 +254,9 @@ More reading, all of it for maintainers:
 
 If FluLens helped your published work, please cite it — see
 [`CITATION.cff`](CITATION.cff). Please cite
-[Flumina](https://github.com/flu-crew/Flumina) too if you used the pipeline
-that made the data.
+[Flumina](https://github.com/flu-crew/Flumina) or
+[FluPore](https://github.com/flu-crew/FluPore) too if you used one of those
+pipelines to make the data.
 
 ## License
 
