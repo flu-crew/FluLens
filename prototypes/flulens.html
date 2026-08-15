@@ -4120,6 +4120,8 @@ function drawReads(bx,by,bw,bh,c0,c1){
      segment with no reads and must not look the same. */
   if(scans.size&&!readBlocks.length&&!readProg)
     msg('reads loaded, but no product in view has CDS coordinates to place them on');
+  if(scans.size&&readBlocks.length&&!readRowsN&&!readProg)
+    msg('0 primary reads passed filters in this region (secondary/supplementary reads are excluded)');
 
   /* ---- coverage. Exact — every read that passed the filters, not the sampled
      stack below it. Alleles are coloured at the reader's OWN min-frequency
@@ -4806,9 +4808,12 @@ function assessDetail(i){
   const out={...c, reasons:[], strandMsg:''};
   if(c.strand===STRAND_NONE){
     const flt=gatkFilterOf(i);
+    // Name the source strandRecOf actually consults: iVar rows read iVar's TSV,
+    // everything else the LoFreq VCF. Saying "no LoFreq record" on an iVar-only
+    // run named a file that run never had.
     out.reasons.push(isGenotypeAF(i)
       ? 'GATK4 genotype with no LoFreq counterpart — no read-level evidence to judge'
-      : 'no LoFreq record for this position — no read-level evidence to judge');
+      : `no ${V.method[i]===M_IVAR?'iVar':'LoFreq'} record for this position — no read-level evidence to judge`);
     /* The decisive fact when there is one, so it goes second: LoFreq's silence
        reads like a gap in coverage until you see that GATK4 rejected the call
        too. FS/SOR are strand-bias tests, which is the same objection the strand
@@ -4866,8 +4871,14 @@ function ensureAssessments(){
   const note=document.getElementById('assessnote');
   if(note) note.textContent='reading VCFs to assess every call…';
   // Both callers that carry strand evidence, or every iVar row would assess
-  // as UNKNOWN for want of a file nothing had read.
-  assessBusy=Promise.all(names.map(n=>Promise.all([loadVCF(n),loadIvar(n)]))).then(()=>{
+  // as UNKNOWN for want of a file nothing had read. Either caller may be absent
+  // — a FluPore/nanopore run has no LoFreq VCF at all, and a served run answers
+  // a missing file with 404 rather than the picker's silent null — so a per-
+  // loader catch keeps one missing caller from aborting the whole assessment.
+  // assessCore reads whichever record strandRecOf returns, so an iVar-only run
+  // still assesses off iVar.
+  assessBusy=Promise.all(names.map(n=>Promise.all(
+      [loadVCF(n).catch(()=>null),loadIvar(n).catch(()=>null)]))).then(()=>{
     computeAssessments(); assessReady=true; assessBusy=null;
     if(note) note.textContent=assessNote();
   });
@@ -5384,7 +5395,7 @@ function refreshBand(){
 
 const BAM_SEQ='=ACMGRSVTWYHKDBN', BAM_CIG='MIDNSHP=X';
 const BAM_SKIP=0x704;   // unmapped | secondary | QC-fail | duplicate
-const BAM_NEED=0x2;     // proper pair — this is the flag that matches DP4
+const BAM_NEED=0x2;     // proper pair — Illumina only; single-end ONT passes need=0
 
 // A byte source is either a real File (directory picker) or the dev shim.
 async function srcBytes(e,a,b){
@@ -5473,7 +5484,8 @@ async function bamHeader(sample){
     const L=dv.getInt32(p,true); p+=4;
     byName.set(nm,i); refs.push({name:nm,len:L});
   }
-  const meta={refs,byName,size};
+  // paired is detected from the first real read during the first scan
+  const meta={refs,byName,size,paired:null};
   bamMeta.set(sample,meta);
   return meta;
 }
@@ -5534,7 +5546,7 @@ function baiChunks(ref,beg,end){
 }
 
 /* ---- records ------------------------------------------------------------ */
-function parseRecords(buf,from,refId,beg,end,out){
+function parseRecords(buf,from,refId,beg,end,out,need){
   const dv=new DataView(buf.buffer,buf.byteOffset);
   let p=from;
   while(p+4<=buf.length){
@@ -5547,7 +5559,7 @@ function parseRecords(buf,from,refId,beg,end,out){
     p=q+bs;
     if(rid!==refId) continue;
     if(flag&BAM_SKIP) continue;
-    if((flag&BAM_NEED)!==BAM_NEED) continue;
+    if((flag&need)!==need) continue;
     let c=q+32+lName;
     const cig=new Uint32Array(nCig);
     let span=0;
@@ -5614,7 +5626,7 @@ const segPending=new Map();       // sample|seg -> in-flight promise, so a secon
 /* Walk one buffer of BAM records, folding each into the counters. Returns the
    byte offset of the first incomplete record so the caller can carry it into
    the next block. */
-function consumeInto(buf,from,rid,S,codons,haps,wantCounts){
+function consumeInto(buf,from,rid,S,codons,haps,wantCounts,meta){
   const dv=new DataView(buf.buffer,buf.byteOffset);
   let p=from;
   while(p+4<=buf.length){
@@ -5626,7 +5638,9 @@ function consumeInto(buf,from,rid,S,codons,haps,wantCounts){
     const lName=buf[q+8], nCig=dv.getUint16(q+12,true);
     const flag=dv.getUint16(q+14,true), lSeq=dv.getInt32(q+16,true);
     p=q+4+bs-4;
-    if(recRid!==rid||(flag&BAM_SKIP)||((flag&BAM_NEED)!==BAM_NEED)) continue;
+    if(meta.paired===null) meta.paired=!!(flag&1);
+    const need=meta.paired?BAM_NEED:0;
+    if(recRid!==rid||(flag&BAM_SKIP)||((flag&need)!==need)) continue;
     const cigOff=q+32+lName, seqOff=cigOff+4*nCig, qualOff=seqOff+((lSeq+1)>>1);
     S.reads++;
     // one CIGAR walk: fold every aligned base into the per-position counts
@@ -5735,7 +5749,7 @@ async function bamScanSegment_(sample,segName,codons,onProgress,wantCounts){
           j.set(carry); j.set(d,carry.length); d=j;
         }
         const from=first?firstInner:0; first=false;
-        const used=consumeInto(d,from,rid,S,codons,haps,wantCounts);
+        const used=consumeInto(d,from,rid,S,codons,haps,wantCounts,meta);
         carry=used<d.length?d.slice(used):null;
       }
       p+=bl;
@@ -5797,10 +5811,9 @@ async function bamCodonCounts(sample,segName,positions,onProgress){
    manufacture one. The picture is for finding things; the count is for
    reporting them.
 
-   Read filters are the same BAM_SKIP / proper-pair pair the rest of the BAM
-   code uses — the set that reproduces LoFreq's DP4. A pileup drawn from a wider
-   set of reads than the callers used would disagree with the table beside it
-   for reasons nothing on screen could explain. */
+   Read filters are BAM_SKIP plus proper-pair for paired (Illumina) data, or
+   BAM_SKIP alone for single-end (ONT). Paired data reproduces LoFreq's DP4;
+   single-end matches iVar's primary-only filter. */
 const READ_GAP=3;              // bases of clearance between reads within a row
 const READS_MIN_CW=3;          // below 1 px per base there is nothing to draw
 const READ_MAX_SEGS=3;         // segments scanned for one screenful
@@ -5864,7 +5877,7 @@ function thinReads(S){
 /* One buffer of BAM records. Counts fold in from every read; only every
    stride-th read is kept for drawing. Returns the offset of the first
    incomplete record, like consumeInto. */
-function consumeReads(buf,from,rid,S){
+function consumeReads(buf,from,rid,S,meta){
   const dv=new DataView(buf.buffer,buf.byteOffset);
   const ref=S.ref;
   let p=from;
@@ -5877,7 +5890,9 @@ function consumeReads(buf,from,rid,S){
     const lName=buf[q+8], mapq=buf[q+9], nCig=dv.getUint16(q+12,true);
     const flag=dv.getUint16(q+14,true), lSeq=dv.getInt32(q+16,true);
     p=q+4+bs-4;
-    if(recRid!==rid||(flag&BAM_SKIP)||((flag&BAM_NEED)!==BAM_NEED)) continue;
+    if(meta.paired===null) meta.paired=!!(flag&1);
+    const need=meta.paired?BAM_NEED:0;
+    if(recRid!==rid||(flag&BAM_SKIP)||((flag&need)!==need)) continue;
     const cigOff=q+32+lName, seqOff=cigOff+4*nCig, qualOff=seqOff+((lSeq+1)>>1);
     const n=S.total++;
     // one walk: per-position counts (every read) and the aligned end
@@ -6016,7 +6031,7 @@ async function bamReadsSegment_(sample,segName,key){
           j.set(carry); j.set(d,carry.length); d=j;
         }
         const from=first?firstInner:0; first=false;
-        const used=consumeReads(d,from,rid,S);
+        const used=consumeReads(d,from,rid,S,meta);
         carry=used<d.length?d.slice(used):null;
       }
       p+=bl;
@@ -7804,13 +7819,19 @@ async function renderVariant(el,i){
      section awaited loadVCF; the assessment did not, so it read an empty cache
      and reported absence of evidence as evidence of absence — the one mistake
      this app is otherwise careful about everywhere. The later `await loadVCF`
-     is now a cache hit, so this costs nothing. */
-  await loadVCF(names[V.row[i]]);
+     is now a cache hit, so this costs nothing.
+
+     Each load is caught: a caller may be absent (a FluPore/nanopore run has no
+     LoFreq VCF), and a SERVED run answers a missing file with a 404 that throws
+     rather than the picker's silent null — an unguarded await there killed the
+     whole panel before any HTML was built. assessDetail handles an absent record
+     already, so a null load degrades the section, it does not break the panel. */
+  await loadVCF(names[V.row[i]]).catch(()=>null);
   // Same reason the LoFreq read is awaited: assessDetail reads the record
   // synchronously while the HTML is built, so an unawaited load would have
   // the assessment reporting absence of evidence as evidence of absence.
-  if(V.method[i]===M_IVAR) await loadIvar(names[V.row[i]]);
-  if(V.method[i]===M_GATK) await loadGATK(names[V.row[i]]);
+  if(V.method[i]===M_IVAR) await loadIvar(names[V.row[i]]).catch(()=>null);
+  if(V.method[i]===M_GATK) await loadGATK(names[V.row[i]]).catch(()=>null);
   /* Same rule again, and for the same reason. irmaVerdict reads BOTH tables
      synchronously while the HTML is composed, so both have to be resolved
      first — and here the failure mode is worse than a contradiction: an
@@ -7827,10 +7848,10 @@ async function renderVariant(el,i){
      synchronously while the marker list is composed, and an unawaited load would
      report every marker as unmeasured on the first click and supported on the
      second. */
-  await loadDepth(names[V.row[i]]);
+  await loadDepth(names[V.row[i]]).catch(()=>null);
   // Same reason, one level up: the "not evaluated" flag needs the run's own
   // floor, and an unawaited read would show it on the second click only.
-  await loadRunMinDepth();
+  await loadRunMinDepth().catch(()=>null);
   const p=PROD.get(V.prod[i]);
   const refAA=V.ref[i]===255?'?':AAS[V.ref[i]], altAA=V.alt[i]===255?'?':AAS[V.alt[i]];
   const cur=curated.get(V.col[i]);
