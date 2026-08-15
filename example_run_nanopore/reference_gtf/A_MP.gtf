@@ -1,0 +1,11 @@
+#gtf-version 2.2
+A_MP	.	gene	1	982	.	+	.	gene_id "M2"; transcript_id ""; gbkey "Gene"; gene "M2"; gene_biotype "protein_coding"
+A_MP	.	CDS	1	26	.	+	0	gene_id "M2"; transcript_id "unassigned_transcript_1"; gbkey "CDS"; gene "M2"; part "1"; product "matrix protein 2"; exon_number "1"
+A_MP	.	CDS	715	979	.	+	1	gene_id "M2"; transcript_id "unassigned_transcript_1"; gbkey "CDS"; gene "M2"; part "2"; product "matrix protein 2"; exon_number "2"
+A_MP	.	start_codon	1	3	.	+	0	gene_id "M2"; transcript_id "unassigned_transcript_1"; gbkey "CDS"; gene "M2"; product "matrix protein 2"; exon_number "1"
+A_MP	.	stop_codon	980	982	.	+	0	gene_id "M2"; transcript_id "unassigned_transcript_1"; gbkey "CDS"; gene "M2"; product "matrix protein 2"; exon_number "2"
+A_MP	.	gene	1	759	.	+	.	gene_id "M1"; transcript_id ""; gbkey "Gene"; gene "M1"; gene_biotype "protein_coding"
+A_MP	.	CDS	1	756	.	+	0	gene_id "M1"; transcript_id "unassigned_transcript_2"; gbkey "CDS"; gene "M1"; product "matrix protein 1"; exon_number "1"
+A_MP	.	start_codon	1	3	.	+	0	gene_id "M1"; transcript_id "unassigned_transcript_2"; gbkey "CDS"; gene "M1"; product "matrix protein 1"; exon_number "1"
+A_MP	.	stop_codon	757	759	.	+	0	gene_id "M1"; transcript_id "unassigned_transcript_2"; gbkey "CDS"; gene "M1"; product "matrix protein 1"; exon_number "1"
+###
