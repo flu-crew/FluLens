@@ -87,21 +87,13 @@ That is well below the real value: `A1`–`A3` carry LoFreq DP into the thousand
 (up to 33,821), and a BAM true to that would be ~86 MB *per sample*. `A4` is
 the deliberately thin library (DP 100–764) and is barely capped.
 
-**So for `A1`–`A3`, the pile-up's BAM depth is below the caller depth shown
-beside it.** For example, `A1_D1 PB2` reads ~220× in the reads, but the tooltip's
-caller depth says 3,000+. That is the cap, not the depth bug this app had
-before: the allele *fraction* is still correct, and only the read count is thinned.
-`A4` is uncapped, and there the BAM depth and caller depth track each other.
-
 `A4_D3` and `A4_D5` carry 6 of 8 segments, which matches what IRMA assembled for
 them. So you can reach the pile-up's absent-segment path from the example.
 
 ## What it does not include
 
 No FluMut markers and no WFABC selection results. Both sections handle their own
-absence and tell you how to enable them. This is more useful than invented
-marker biology in a public repository. A made-up resistance marker is exactly the
-kind of thing that a reader quotes back later as though it were real.
+absence and tell you how to enable them. 
 
 ## Note on the reference
 
