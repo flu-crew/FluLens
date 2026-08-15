@@ -426,8 +426,8 @@
   </div>
   <div class="hgroup right"></div>
   <div class="tools">
-    <!-- the ramp selector now sits beside the legend it controls, in the sidebar -->
-    <button id="export" title="Export what is currently on screen">export</button>
+    <!-- the ramp selector now sits beside the legend it controls, in the sidebar;
+         export moved down beside "Open run folder", its input/output pair -->
     <button id="theme" title="Light / dark">◐</button>
     <button id="zoomout">–</button><button id="zoomin">+</button>
     <button id="fit">Fit</button>
@@ -441,6 +441,13 @@
     <div class="sec">
       <div class="rowbtns">
         <button id="pick">📁 Open run folder…</button>
+      </div>
+      <!-- Export sits with Open run folder as the run's input/output pair. It is
+           always visible but greys out when there is nothing to export — no run
+           open, or a view/filter state that leaves no rows. placeModeSwitch sets
+           the disabled state from exportBuild, the same rows the click writes. -->
+      <div class="rowbtns" id="exportrow">
+        <button id="export" title="Export what is currently on screen">📦 Export results…</button>
       </div>
       <!-- Run summary, moved out of the header. The chip is the run's fixed
            dimensions (samples, codons, products, calls); the stat line is the
@@ -9019,6 +9026,13 @@ function placeModeSwitch(){
      something loads. */
   l.style.display=r.style.display=on?'flex':'none';
   { const vr=document.getElementById('vvR'); if(vr) vr.style.display=on?'flex':'none'; }
+  // Export is always present beside Open run folder, and greys out when there is
+  // nothing to write — no run, or a view/filter state that yields no rows. The
+  // emptiness comes from exportBuild itself, so the button and the file agree.
+  { const eb=document.getElementById('export');
+    if(eb){ let empty=true;
+      if(on){ const built=exportBuild(); empty=!built||!built.rows.length; }
+      eb.disabled=empty; } }
   // Each view gets its own legend; showing both at once invites reading the
   // frequency ramp as if it coloured the selection cells.
   const sel=document.getElementById('sellegend'), freq=document.getElementById('lramp');
