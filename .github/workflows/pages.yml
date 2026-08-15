@@ -1,11 +1,12 @@
 # Publishes the browser build to GitHub Pages.
 #
-# Two things land on the site:
-#   /                      the app, empty, waiting for you to pick your own run
-#   /?run=example_run      the same app auto-loaded with the synthetic example
+# Three things land on the site:
+#   /                              the app, empty, waiting for you to pick a run
+#   /?run=example_run              auto-loaded with the synthetic Flumina example
+#   /?run=example_run_nanopore     auto-loaded with the synthetic FluPore example
 #
-# One copy of the HTML serves both — the app reads a `?run=` parameter. The
-# example needs manifest.json because Pages serves no directory index; see
+# One copy of the HTML serves all three — the app reads a `?run=` parameter.
+# Each example needs manifest.json because Pages serves no directory index; see
 # tools/make_manifest.py for why that matters.
 name: Pages
 
@@ -45,6 +46,9 @@ jobs:
           cp -R example_run _site/example_run
           rm -f _site/example_run/README.md
           python3 tools/make_manifest.py _site/example_run
+          cp -R example_run_nanopore _site/example_run_nanopore
+          rm -f _site/example_run_nanopore/README.md
+          python3 tools/make_manifest.py _site/example_run_nanopore
           # Also offer the single file as a download, so someone who wants it
           # offline does not have to clone the repository.
           cp prototypes/flulens.html _site/flulens.html
