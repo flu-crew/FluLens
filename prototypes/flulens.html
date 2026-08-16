@@ -2904,6 +2904,16 @@ async function loadRun(){
     selVariant=null; selCol=null; selNt=null; selIrma=null;
     assess=null; altReads=null; assessStats=null; assessReady=false; assessBusy=null;
     await phase('laying out');
+    /* The depth filter opens at the run's own MIN_DEPTH, not a fixed 100. An ONT
+       run (MIN_DEPTH 20) shows every call the pipeline kept; an Illumina run (100)
+       opens unchanged. The pipeline declares the floor, so there is no platform
+       guessing. Config-less runs keep the preset value. This sets the value
+       without an input event, so it never persists as a saved preset. */
+    await loadRunThresholds().catch(()=>null);
+    if(runMinDepth!==null){
+      document.getElementById('fdepth').value=runMinDepth;
+      document.getElementById('vdepth').textContent=runMinDepth;
+    }
     applyFilters(); ready=true; rowPx=0; scrollRow=0;
     resize(); fit();
     setChip(`${NT} samples × ${NC.toLocaleString()} codons · ${products.length} products · `+
@@ -4767,10 +4777,13 @@ function reconcileFrequencies(){
 const ASSESS={REAL:0,CAUTION:1,ARTEFACT:2,UNKNOWN:3};
 const ASSESS_LABEL=['Looks real','Treat with caution','Likely artefact','Cannot assess'];
 const ASSESS_CLASS=['good','warn','bad','warn'];
-/* Defaults = Flumina's own defaults (min_depth 100, min_allele_frequency 0.01)
-   plus a min-alt of 10. loadRunThresholds overwrites the three AS_MIN_* from the
-   run's config.cfg when it publishes them, and the run-reset restores these. */
-const AS_DEF_DEPTH=100, AS_DEF_FREQ=0.01, AS_DEF_ALT=10;
+/* Assessment-floor default is 30, not Flumina's 100. ONT runs are thin, so at 100
+   most calls read as low-confidence only because of depth. 30 fits ONT and still
+   flags true low-input fixations (numbers in FluPore HANDOFF.md). This is a
+   fallback only: loadRunThresholds overwrites AS_MIN_DEPTH from the run's own
+   config.cfg MIN_DEPTH when present, so the default applies to config-less runs.
+   min_allele_frequency 0.01 and min-alt 10 unchanged; run-reset restores these. */
+const AS_DEF_DEPTH=30, AS_DEF_FREQ=0.01, AS_DEF_ALT=10;
 let AS_MIN_DEPTH=AS_DEF_DEPTH, AS_MIN_FREQ=AS_DEF_FREQ, AS_MIN_ALT=AS_DEF_ALT;
 /* AS_STRAND_MIN_ALT and the skew cut-offs are statistical, not pipeline floors,
    so they stay fixed and are not read from config. */
