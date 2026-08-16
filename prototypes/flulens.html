@@ -2343,22 +2343,37 @@ async function loadDepth(sample){
   visDepthCache.set(sample,byVis);
   return bySeg;
 }
-/* The run's own MIN_DEPTH, from the config the pipeline publishes beside its
-   results. Read from the run rather than assumed, because "below the floor" is
-   only meaningful against the floor this run actually used.
+/* The run's own floors — MIN_DEPTH, frequency, MIN_ALT — from the config the
+   pipeline publishes beside its results. Read from the run rather than assumed,
+   because "below the floor" is only meaningful against the floor this run
+   actually used: a Flumina run calls at depth 100 / freq 1%, a FluPore run at
+   20 / 3%, and the assessment must judge each against its own.
 
-   Null when there is no config to read — an older run, or a directory of VCFs
-   that never came from Flumina. Everything that depends on it then stays quiet
-   rather than guessing 100. */
-let runMinDepth=null, runMinDepthTried=false;
-async function loadRunMinDepth(){
-  if(runMinDepthTried) return runMinDepth;
-  runMinDepthTried=true;
+   Flumina writes MIN_ALLELE_FREQUENCY, FluPore writes MIN_FREQ — accept either.
+   A key that is absent leaves the AS_* default in place, and those defaults ARE
+   Flumina's own defaults (100 / 0.01 / 10), so a Flumina run that omits the
+   keys is judged against exactly the floor it silently used.
+
+   runMinDepth stays null when there is no MIN_DEPTH to read — an older run, or a
+   directory of VCFs that never came from the pipeline — so the marker view's
+   depth line, which gates on runMinDepth!==null, stays quiet rather than drawing
+   a floor the run never declared. The assessment always has a floor: the AS_*
+   defaults. */
+let runMinDepth=null, runThreshTried=false;
+async function loadRunThresholds(){
+  if(runThreshTried) return runMinDepth;
+  runThreshTried=true;
   const f=findFile('pipeline_info/config.cfg','config.cfg');
   if(!f) return null;
   try{
-    const m=/^\s*MIN_DEPTH\s*=\s*"?(\d+)"?/m.exec(await f.text());
-    if(m) runMinDepth=+m[1];
+    const txt=await f.text();
+    const num=re=>{ const m=re.exec(txt); return m?+m[1]:null; };
+    const d =num(/^\s*MIN_DEPTH\s*=\s*"?(\d+)"?/m);
+    const fr=num(/^\s*(?:MIN_FREQ|MIN_ALLELE_FREQUENCY)\s*=\s*"?(\d*\.?\d+)"?/m);
+    const a =num(/^\s*MIN_ALT\s*=\s*"?(\d+)"?/m);
+    if(d !==null){ runMinDepth=d; AS_MIN_DEPTH=d; }
+    if(fr!==null) AS_MIN_FREQ=fr;
+    if(a !==null) AS_MIN_ALT=a;
   }catch(e){ /* unreadable is the same as absent */ }
   return runMinDepth;
 }
@@ -2871,10 +2886,12 @@ async function loadRun(){
     // gatkCache too, or a second run shows the first run's FILTER values
     hidden=new Set(); vcfCache=new Map(); gatkCache=new Map(); ivarCache=new Map();
     depthCache=new Map();       // or a second run reports the first run's coverage
-    // Both halves of the depth answer, and the floor they are judged against —
+    // Both halves of the depth answer, and the floors they are judged against —
     // a stale MIN_DEPTH would flag the new run's markers against the old run's
-    // threshold, which is worse than not flagging them at all.
-    visDepthCache=new Map(); runMinDepth=null; runMinDepthTried=false;
+    // threshold, which is worse than not flagging them at all. The assessment
+    // floors reset to their defaults too, or run B inherits run A's config.
+    visDepthCache=new Map(); runMinDepth=null; runThreshTried=false;
+    AS_MIN_DEPTH=AS_DEF_DEPTH; AS_MIN_FREQ=AS_DEF_FREQ; AS_MIN_ALT=AS_DEF_ALT;
     /* The IRMA grids are sized NT*NC and keyed by this run's row order, so
        carrying them into a second run is not merely stale — it indexes the new
        run's samples with the old run's rows. Cleared here for the same reason
@@ -4721,29 +4738,43 @@ function reconcileFrequencies(){
    up to 2.7x in the tail (NP:627 estimates 92 against a true 140), which is
    precisely the low-count end where a min-alt-reads rule decides anything.
 
-   THRESHOLDS ARE ABSOLUTE AND ARE NOT THE SIDEBAR SLIDERS. This is the same
-   mistake the QC column was built with and had to be rewritten to undo: score
-   the filtered set and raising min depth to 100 means no surviving call can be
-   under 100 by construction, so the depth rule can never fire and everything
-   passes. Here it would also be circular, because the assessment feeds a filter
-   of its own — moving a slider would change the verdict that the slider's own
-   filter then selects on. A verdict is a property of the call; the sliders are
-   a property of the view. They must not be the same number.
+   THRESHOLDS ARE THE RUN'S OWN FLOORS AND ARE NOT THE SIDEBAR SLIDERS. The
+   depth, alt and frequency floors are read once from the run's config
+   (loadRunThresholds) and are constants for that run — the point is that they
+   are NOT the live sliders. That is the same mistake the QC column was built
+   with and had to be rewritten to undo: score the filtered set and raising min
+   depth to 100 means no surviving call can be under 100 by construction, so the
+   depth rule can never fire and everything passes. Here it would also be
+   circular, because the assessment feeds a filter of its own — moving a slider
+   would change the verdict that the slider's own filter then selects on. A
+   verdict is a property of the call; the sliders are a property of the view.
+   They must not be the same number. Reading from config does not break this:
+   config is a per-run constant, not a control the reader can drag.
 
-   Each threshold has a reason rather than a taste:
-     depth < 100   the pipeline's own min_depth floor — below it both callers
-                   report false fixations from low template input
-     alt < 4       too few reads to say anything about strand at all
-     alt < 10      thin enough that one duplicate or one mis-map moves it
-     freq < 1%     under Flumina's min_allele_frequency, i.e. the caller's own
-                   reporting floor, and in the noise
+   Each threshold has a reason rather than a taste. Depth, alt-count and
+   frequency are the run's own floors, shown here at their defaults (which are
+   Flumina's defaults; a FluPore run reads 20 / 10 / 3% from its config):
+     depth < 100   the run's min_depth floor — below it both callers report
+                   false fixations from low template input
+     alt < 4       too few reads to say anything about strand at all — fixed,
+                   a statistical floor, not a pipeline one
+     alt < 10      the run's min_alt floor — thin enough that one duplicate or
+                   one mis-map moves it
+     freq < 1%     the run's min_allele_frequency, the caller's own reporting
+                   floor, and in the noise
      skew          alt strand fraction against the REFERENCE allele's, not
                    against 50% — the reference is the control for that library */
 const ASSESS={REAL:0,CAUTION:1,ARTEFACT:2,UNKNOWN:3};
 const ASSESS_LABEL=['Looks real','Treat with caution','Likely artefact','Cannot assess'];
 const ASSESS_CLASS=['good','warn','bad','warn'];
-const AS_MIN_DEPTH=100, AS_MIN_ALT=10, AS_STRAND_MIN_ALT=4, AS_MIN_FREQ=0.01,
-      AS_SKEW_BAD=0.40, AS_SKEW_WARN=0.25;
+/* Defaults = Flumina's own defaults (min_depth 100, min_allele_frequency 0.01)
+   plus a min-alt of 10. loadRunThresholds overwrites the three AS_MIN_* from the
+   run's config.cfg when it publishes them, and the run-reset restores these. */
+const AS_DEF_DEPTH=100, AS_DEF_FREQ=0.01, AS_DEF_ALT=10;
+let AS_MIN_DEPTH=AS_DEF_DEPTH, AS_MIN_FREQ=AS_DEF_FREQ, AS_MIN_ALT=AS_DEF_ALT;
+/* AS_STRAND_MIN_ALT and the skew cut-offs are statistical, not pipeline floors,
+   so they stay fixed and are not read from config. */
+const AS_STRAND_MIN_ALT=4, AS_SKEW_BAD=0.40, AS_SKEW_WARN=0.25;
 
 /* The gap between LoFreq's and iVar's fraction at which the panel calls the two
    callers' disagreement worth noticing. Same "reason rather than taste" rule as
@@ -4843,7 +4874,7 @@ function assessDetail(i){
   if(V.depth[i]<AS_MIN_DEPTH)
     out.reasons.push(`depth ${V.depth[i].toLocaleString()} is below ${AS_MIN_DEPTH} — low template input makes false fixations`);
   if(V.freq[i]<AS_MIN_FREQ)
-    out.reasons.push(`${(V.freq[i]*100).toFixed(2)}% is below the ${AS_MIN_FREQ*100}% caller floor`);
+    out.reasons.push(`${(V.freq[i]*100).toFixed(2)}% is below the ${+(AS_MIN_FREQ*100).toFixed(3)}% caller floor`);
   if(c.strand===STRAND_WARN)
     out.reasons.push('some strand skew relative to the reference allele');
   if(c.verdict===ASSESS.REAL)
@@ -4877,8 +4908,12 @@ function ensureAssessments(){
   // loader catch keeps one missing caller from aborting the whole assessment.
   // assessCore reads whichever record strandRecOf returns, so an iVar-only run
   // still assesses off iVar.
-  assessBusy=Promise.all(names.map(n=>Promise.all(
-      [loadVCF(n).catch(()=>null),loadIvar(n).catch(()=>null)]))).then(()=>{
+  // The run's config floors are read first, so computeAssessments judges every
+  // call against the run's own min_depth/min_freq/min_alt rather than the
+  // defaults it started with.
+  assessBusy=loadRunThresholds().catch(()=>null).then(()=>
+      Promise.all(names.map(n=>Promise.all(
+      [loadVCF(n).catch(()=>null),loadIvar(n).catch(()=>null)])))).then(()=>{
     computeAssessments(); assessReady=true; assessBusy=null;
     if(note) note.textContent=assessNote();
   });
@@ -4890,7 +4925,7 @@ function assessNote(){
          `${assessStats.caution.toLocaleString()} caution · `+
          `${assessStats.artefact.toLocaleString()} artefact`+
          (assessStats.unknown?` · ${assessStats.unknown} unassessable`:'')+
-         ` — fixed thresholds, not the sliders above`;
+         ` — the run's floors, not the sliders above`;
 }
 const isGenotypeAF=i=>afSource&&afSource[i]===2;
 
@@ -7851,11 +7886,11 @@ async function renderVariant(el,i){
   await loadDepth(names[V.row[i]]).catch(()=>null);
   // Same reason, one level up: the "not evaluated" flag needs the run's own
   // floor, and an unawaited read would show it on the second click only.
-  await loadRunMinDepth().catch(()=>null);
+  await loadRunThresholds().catch(()=>null);
   const p=PROD.get(V.prod[i]);
   const refAA=V.ref[i]===255?'?':AAS[V.ref[i]], altAA=V.alt[i]===255?'?':AAS[V.alt[i]];
   const cur=curated.get(V.col[i]);
-  const lowD=V.depth[i]<100;
+  const lowD=V.depth[i]<AS_MIN_DEPTH;   // the run's own depth floor, from config
   // is this codon carrying more than one call in this sample?
   /* One change, not one row: both callers firing at the same position is a
      duplicate report, not two things happening in the codon. 88 of the 381
@@ -7931,7 +7966,7 @@ async function renderVariant(el,i){
     `<dl class="dl">
       <dt>frequency</dt><dd>${(V.freq[i]*100).toFixed(2)}%${
         isGenotypeAF(i)?' <span class="bad">⚠ genotype, not an allele fraction</span>':''}</dd>
-      <dt>depth</dt><dd class="${lowD?'bad':''}">${V.depth[i].toLocaleString()}${lowD?' ⚠ below 100':''}</dd>
+      <dt>depth</dt><dd class="${lowD?'bad':''}">${V.depth[i].toLocaleString()}${lowD?` ⚠ below ${AS_MIN_DEPTH}`:''}</dd>
       ${/* From the record just loaded, not from the altReads array — that array
             only exists once the assessment filter has been used, and reading it
             unconditionally made an un-run computation look like a finding:
