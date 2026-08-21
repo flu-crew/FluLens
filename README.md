@@ -199,8 +199,9 @@ names. It marks the HA and NA findings that it cannot confirm. A bare `A_HA` wit
 subtype suffix counts as unconfirmable, not as a pass.
 
 **Depth below 100 makes false fixed differences.** With low template input, both callers
-report false fixed differences. This is why Flumina's own floor is `min_depth 100`, and
-why FluLens downgrades any verdict below it.
+report false fixed differences. This is why Flumina defaults to `min_depth 100` and
+FluPore to `min_depth 20`, and why FluLens downgrades any verdict below the run's own
+floor.
 
 **The assessment thresholds are absolute. They are not the sidebar sliders.** If they were
 the sliders, a slider would change the verdict that the same slider then filters on. The
