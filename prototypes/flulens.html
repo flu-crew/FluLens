@@ -453,16 +453,19 @@
       <div class="rowbtns" id="exportrow">
         <button id="export" title="Export what is currently on screen">📦 Export results…</button>
       </div>
-      <!-- Run summary, moved out of the header. The chip is the run's fixed
-           dimensions (samples, codons, products, calls); the stat line is the
-           per-view count and updates as the view and filters change. -->
-      <div id="runsummary">
-        <div class="chip" id="chip" hidden></div>
-        <div class="stat" id="stats"></div>
+      <div class="rowbtns">
+        <button id="runnotes-toggle" title="Run summary and load notes">📋 Run notes…</button>
       </div>
-      <div class="note" id="found" style="margin-top:8px">Point at a Flumina output
+      <div id="runnotes-body">
+        <div id="runsummary">
+          <div class="chip" id="chip" hidden></div>
+          <div class="stat" id="stats"></div>
+        </div>
+        <div class="note" id="found" style="margin-top:8px">Point at a pipeline output
 directory — the one containing
 variant_analysis/ and vcf_files/</div>
+        <div class="note" id="notes" style="margin-top:8px"> </div>
+      </div>
     </div>
 
     <!-- read pile-up. Placed HIGH, directly under the import block, because it
@@ -676,6 +679,28 @@ the changed base's colour.</div>
         view — a consensus is established, not filtered.</div>
     </div>
 
+    <!-- 7 · samples. Moved to right after filters so the two filtering
+         sections sit together in every view. -->
+    <div class="sec">
+      <h4>Samples <span id="rownote"></span></h4>
+      <div class="note" style="margin:0 0 5px">pass requires
+        <span style="opacity:.7">(measured on all of a sample's calls,
+        not the filtered ones)</span></div>
+      <div class="fld"><span>min calls</span>
+        <input type="range" id="qcalls" min="0" max="200" step="5" value="1">
+        <span class="val" id="vqcalls">1</span></div>
+      <div class="fld"><span>median depth</span>
+        <input type="range" id="qdepth" min="0" max="2000" step="50" value="200">
+        <span class="val" id="vqdepth">200</span></div>
+      <div class="fld"><span>max low-depth</span>
+        <input type="range" id="qlow" min="0" max="100" step="5" value="25">
+        <span class="val" id="vqlow">25%</span></div>
+      <div class="fld" style="margin-top:7px"><label><input type="checkbox" id="hideempty">
+        hide samples with no calls</label></div>
+      <div class="fld"><label><input type="checkbox" id="hidefail">
+        hide failing samples</label></div>
+    </div>
+
     <!-- 6b · consensus source.
          Two consensuses exist and they are not the same object. This app derives
          one by painting calls above 50% onto the reference; IRMA produced one,
@@ -701,14 +726,7 @@ the changed base's colour.</div>
       <div class="note" id="consnote"> </div>
     </div>
 
-    <!-- 6c · the expanded band, in the two views that draw one.
-         `showPile` was a bare `let` with no way to reach it: the depth profile
-         took the first-click slot the pileup used to hold, so the residue
-         distributions behind it had been unreachable from the UI since. This is
-         the control that item asked for. It is a SELECT rather than a checkbox
-         because the two contents answer different questions from different
-         files — IRMA's coverage tables against the BWA BAM — and a checkbox
-         labelled "pileup" would not say that. -->
+    <!-- 6c · the expanded band, in the two views that draw one. -->
     <div class="sec" id="bandsec" hidden>
       <h4>Expanded band</h4>
       <div class="fld"><span>shows</span>
@@ -720,40 +738,13 @@ the changed base's colour.</div>
 needs no BAM and works on every run; the residue mix reads the BAM and needs at
 least 3&thinsp;px per codon. For the reads themselves, use the read pile-up view.</div>
     </div>
-
-    <!-- 7 · samples. Sliders first, then the checkboxes that act on them. -->
-    <div class="sec">
-      <h4>Samples <span id="rownote"></span></h4>
-      <div class="note" style="margin:0 0 5px">pass requires
-        <span style="opacity:.7">(measured on all of a sample's calls,
-        not the filtered ones)</span></div>
-      <div class="fld"><span>min calls</span>
-        <input type="range" id="qcalls" min="0" max="200" step="5" value="1">
-        <span class="val" id="vqcalls">1</span></div>
-      <div class="fld"><span>median depth</span>
-        <input type="range" id="qdepth" min="0" max="2000" step="50" value="200">
-        <span class="val" id="vqdepth">200</span></div>
-      <div class="fld"><span>max low-depth</span>
-        <input type="range" id="qlow" min="0" max="100" step="5" value="25">
-        <span class="val" id="vqlow">25%</span></div>
-      <div class="fld" style="margin-top:7px"><label><input type="checkbox" id="hideempty">
-        hide samples with no calls</label></div>
-      <div class="fld"><label><input type="checkbox" id="hidefail">
-        hide failing samples</label></div>
-    </div>
-
-    <!-- 8 · run notes -->
-    <div class="sec">
-      <h4>Run notes</h4>
-      <div class="note" id="notes"> </div>
-    </div>
   </aside>
 
   <div id="wrap">
     <canvas id="cv"></canvas>
     <div id="tip"></div>
     <div class="hint">scroll = zoom (over the sample list: scrolls it) · ⇧scroll / ⌥scroll = pan across / down · ⌘ctrl-scroll = row height · drag = pan</div>
-    <div id="drop">Drop a Flumina results folder</div>
+    <div id="drop">Drop a results folder</div>
     <div id="loading">
       <div id="loadname">reading run…</div>
       <div id="loadbar"><i></i></div>
@@ -788,9 +779,9 @@ least 3&thinsp;px per codon. For the reads themselves, use the read pile-up view
 <script>
 "use strict";
 /* =========================================================================
-   FluLens — influenza variant review over a Flumina results directory.
+   FluLens — influenza variant review over a Flumina or FluPore results directory.
 
-   Reads a Flumina results directory and shows the amino-acid table as a
+   Reads a pipeline results directory and shows the amino-acid table as a
    samples x codons matrix, with per-variant detail backed by the raw LoFreq
    VCF (loaded lazily, one sample at a time, so opening a run stays instant).
 
@@ -2699,7 +2690,7 @@ async function loadRun(){
   const aaF=findFile('variant_analysis/all_sample_amino_acids.txt');
   const fnd=document.getElementById('found');
   if(!aaF){
-    fnd.innerHTML='<span class="bad">variant_analysis/all_sample_amino_acids.txt not found</span>\nIs this a Flumina output directory?';
+    fnd.innerHTML='<span class="bad">variant_analysis/all_sample_amino_acids.txt not found</span>\nIs this a Flumina or FluPore output directory?';
     loadHide();          // discovery may have raised the overlay before this
     return;
   }
@@ -4112,7 +4103,7 @@ function drawReads(bx,by,bw,bh,c0,c1){
 
   readBlocks=[]; readRowsN=0; window.__readMaxD=0; window.__readSB=null;
   if(cw<READS_MIN_CW){
-    msg('zoom in past '+READS_MIN_CW+' px per codon — below one pixel per base there is no pileup to draw');
+    msg('zoom in past '+READS_MIN_CW+' px per codon to see the pileup');
     ctx.restore(); return;
   }
   if(!hasBAM(sample)){
@@ -5863,7 +5854,7 @@ async function bamCodonCounts(sample,segName,positions,onProgress){
    BAM_SKIP alone for single-end (ONT). Paired data reproduces LoFreq's DP4;
    single-end matches iVar's primary-only filter. */
 const READ_GAP=3;              // bases of clearance between reads within a row
-const READS_MIN_CW=3;          // below 1 px per base there is nothing to draw
+const READS_MIN_CW=1;          // ~1 px per codon: marks visible, bases not readable
 const READ_MAX_SEGS=3;         // segments scanned for one screenful
 
 let readsSample=null;          // sample index into `names`, or null for the list
@@ -6410,7 +6401,7 @@ function draw(){
   ctx.fillStyle=TH.surface; ctx.fillRect(0,0,cssW,cssH);
   if(!ready){
     ctx.fillStyle=TH.dim; ctx.font='12px ui-monospace,monospace';
-    ctx.fillText('Open a Flumina results folder to begin', 24, 40);
+    ctx.fillText('Open a results folder to begin', 24, 40);
     return;
   }
   const rh=rowH(), bx=NAMES_W, by=topH(), bw=bodyW(), bh=bodyH();
@@ -9000,6 +8991,10 @@ document.getElementById('zoomout').onclick=()=>{
 };
 document.getElementById('fit').onclick=fit;
 document.getElementById('export').onclick=doExport;
+document.getElementById('runnotes-toggle').onclick=()=>{
+  const b=document.getElementById('runnotes-body');
+  b.hidden=!b.hidden;
+};
 // Escape closes the export dialog. The app had no keyboard handling at all
 // before this, so it is scoped to the dialog rather than made a global map.
 window.addEventListener('keydown',e=>{
@@ -9600,7 +9595,7 @@ async function tauriBootstrap(root){
 }
 async function tauriOpen(){
   const { open } = window.__TAURI__.dialog;
-  const dir = await open({ directory:true, multiple:false, title:'Open a Flumina run directory' });
+  const dir = await open({ directory:true, multiple:false, title:'Open a run directory' });
   if(dir) await tauriBootstrap(dir);
 }
 if(TAURI){
