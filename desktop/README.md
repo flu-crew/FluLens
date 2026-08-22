@@ -1,6 +1,6 @@
 # FluLens desktop shell
 
-A small Tauri wrapper around `prototypes/flulens.html`. The app itself does not
+A small Tauri wrapper around `flulens.html`. The app itself does not
 change. This shell removes three limits of the browser version.
 
 **Why it exists**
@@ -35,7 +35,7 @@ which zsh does not read, and it could not amend the root-owned `~/.bash_profile`
 
 **Four things about this build that cost time**
 
-1. **The binary contains the compiled frontend.** If you edit `prototypes/flulens.html`,
+1. **The binary contains the compiled frontend.** If you edit `flulens.html`,
    the app shows no change. If you copy it into `dist/` by hand while the app runs,
    the app also shows no change. Every frontend change needs a rebuild. People
    mistook this for an app bug one time. The letters scheme showed Zappo in the app

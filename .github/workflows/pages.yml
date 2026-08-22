@@ -42,7 +42,7 @@ jobs:
       - name: Assemble site
         run: |
           mkdir -p _site
-          cp prototypes/flulens.html _site/index.html
+          cp flulens.html _site/index.html
           cp -R example_run _site/example_run
           rm -f _site/example_run/README.md
           python3 tools/make_manifest.py _site/example_run
@@ -51,7 +51,7 @@ jobs:
           python3 tools/make_manifest.py _site/example_run_nanopore
           # Also offer the single file as a download, so someone who wants it
           # offline does not have to clone the repository.
-          cp prototypes/flulens.html _site/flulens.html
+          cp flulens.html _site/flulens.html
 
       # enablement: true switches Pages on for the repository rather than failing
       # when it is off. Without it the first run dies with "Get Pages site failed …

@@ -5,7 +5,7 @@
   "identifier": "org.flu-crew.flulens",
   "build": {
     "frontendDist": "dist",
-    "beforeBuildCommand": "mkdir -p dist && (cp ../prototypes/flulens.html dist/ 2>/dev/null || cp prototypes/flulens.html desktop/dist/ 2>/dev/null || cp prototypes/flulens.html dist/ 2>/dev/null)"
+    "beforeBuildCommand": "mkdir -p dist && (cp ../flulens.html dist/ 2>/dev/null || cp flulens.html desktop/dist/ 2>/dev/null || cp flulens.html dist/ 2>/dev/null)"
   },
   "app": {
     "windows": [
