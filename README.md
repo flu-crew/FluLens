@@ -24,7 +24,7 @@ There are three ways to run FluLens. They are the same application. Use the one 
 |---|---|
 | [1. In a browser](#1-in-a-browser) | Simplest. Nothing to install, works on any OS |
 | [2. As a single file](#2-as-a-single-file) | You want it offline, or on a machine with no internet |
-| [3. As a desktop app](#3-as-a-desktop-app) | macOS, and you want it to remember your last run [coming soon]|
+| [3. As a desktop app](#3-as-a-desktop-app) | macOS (Apple Silicon & Intel), remembers your last run |
 
 ### 1. In a browser
 
@@ -45,21 +45,15 @@ open flulens.html        # macOS
 xdg-open flulens.html    # Linux
 ```
 
-### 3. As a desktop app [coming soon]
+### 3. As a desktop app
 
-Download `FluLens_<version>_universal.dmg` from the
+Download `FluLens_<version>_<arch>.dmg` (e.g. `FluLens_1.0.0_aarch64.dmg`) from the
 [latest release](https://github.com/flu-crew/FluLens/releases/latest). Open it and
-drag FluLens to Applications. The build is universal — it runs on Apple Silicon and Intel.
+drag FluLens to Applications.
 
-The desktop version can read the filesystem. It reopens your last run
-automatically, so it does not ask each time.
-
-> **If macOS says it cannot verify the app**, the release is not signed. You can
-> get it from a signed release, or you can permit it one time. Go to **System Settings →
-> Privacy & Security → Open Anyway**.
-
-There are Windows and Linux builds on the releases page too. On both systems, the browser
-version is the better choice.
+The desktop app is signed and notarized by Apple. It reopens your last run directory
+automatically across launches and provides direct native filesystem access for fast
+byte-range reads over BAM alignments.
 
 ---
 
