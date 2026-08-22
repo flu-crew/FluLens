@@ -219,7 +219,7 @@ save it and run it offline with no change in behaviour.
 
 ## Building from source
 
-The browser version needs no build: `prototypes/flulens.html` *is* the
+The browser version needs no build: `flulens.html` *is* the
 application. Edit it and reload.
 
 The desktop app is a [Tauri](https://tauri.app) shell around that same file:
@@ -230,7 +230,7 @@ rustup target add aarch64-apple-darwin x86_64-apple-darwin
 cd desktop && cargo tauri build --target universal-apple-darwin
 ```
 
-> **The binary contains the compiled frontend.** If you edit `prototypes/flulens.html`,
+> **The binary contains the compiled frontend.** If you edit `flulens.html`,
 > the desktop app shows no change until you rebuild. People forget this often and lose
 > time.
 

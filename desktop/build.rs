@@ -2,10 +2,11 @@ use std::fs;
 use std::path::Path;
 
 fn main() {
-    // Ensure dist/flulens.html is always in sync with prototypes/flulens.html
+    // Ensure dist/flulens.html is always in sync with root flulens.html
     let candidate_srcs = [
+        Path::new("../flulens.html"),
+        Path::new("flulens.html"),
         Path::new("../prototypes/flulens.html"),
-        Path::new("prototypes/flulens.html"),
     ];
     let dst_dir = Path::new("dist");
     let dst = dst_dir.join("flulens.html");

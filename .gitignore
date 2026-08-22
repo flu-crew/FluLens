@@ -24,7 +24,6 @@ example_run/reference.fa.fai
 
 # Copies the release workflow makes at the repository root before uploading them
 # as release assets.
-/flulens.html
 /example_run.zip
 
 # Development symlinks into local research data. These point at real study runs

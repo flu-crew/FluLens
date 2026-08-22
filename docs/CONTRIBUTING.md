@@ -5,7 +5,7 @@
 
 ## The application is one file
 
-`prototypes/flulens.html` — about 5,000 lines, no dependencies, no build step,
+`flulens.html` — about 5,000 lines, no dependencies, no build step,
 and no framework. Open it in a browser and it works. Everything else in this
 repository is there to package, document, or test that file.
 
@@ -63,10 +63,10 @@ Without a manifest, FluLens uses the autoindex path, and nothing changes.
 
 ## The desktop app embeds the frontend
 
-`beforeBuildCommand` copies `prototypes/flulens.html` into `desktop/dist/`, and
+`beforeBuildCommand` copies `flulens.html` into `desktop/dist/`, and
 Tauri **compiles that directory into the binary**. So:
 
-> If you edit `prototypes/flulens.html`, the desktop app shows no change. If you
+> If you edit `flulens.html`, the desktop app shows no change. If you
 > copy it into `dist/` by hand, that also shows no change. Every frontend change needs
 > `cargo tauri build`.
 
