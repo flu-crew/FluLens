@@ -1,0 +1,16 @@
+{
+  "": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Default capabilities for FluLens desktop app",
+  "windows": ["main", "*"],
+  "permissions": [
+    "core:default",
+    "core:app:default",
+    "core:window:default",
+    "core:webview:default",
+    "core:path:default",
+    "core:event:default",
+    "dialog:default",
+    "dialog:allow-open"
+  ]
+}

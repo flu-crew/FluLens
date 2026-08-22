@@ -5,7 +5,7 @@
   "identifier": "org.flu-crew.flulens",
   "build": {
     "frontendDist": "dist",
-    "beforeBuildCommand": "mkdir -p desktop/dist && cp prototypes/flulens.html desktop/dist/"
+    "beforeBuildCommand": "mkdir -p dist && (cp ../prototypes/flulens.html dist/ 2>/dev/null || cp prototypes/flulens.html desktop/dist/ 2>/dev/null || cp prototypes/flulens.html dist/ 2>/dev/null)"
   },
   "app": {
     "windows": [
@@ -15,12 +15,14 @@
         "width": 1600,
         "height": 1000,
         "minWidth": 900,
-        "minHeight": 600
+        "minHeight": 600,
+        "label": "main"
       }
     ],
     "security": {
       "csp": null
-    }
+    },
+    "withGlobalTauri": true
   },
   "bundle": {
     "active": true,
@@ -42,9 +44,18 @@
       "minimumSystemVersion": "10.15",
       "hardenedRuntime": true,
       "dmg": {
-        "windowSize": { "width": 660, "height": 400 },
-        "appPosition": { "x": 180, "y": 180 },
-        "applicationFolderPosition": { "x": 480, "y": 180 }
+        "windowSize": {
+          "width": 660,
+          "height": 400
+        },
+        "appPosition": {
+          "x": 180,
+          "y": 180
+        },
+        "applicationFolderPosition": {
+          "x": 480,
+          "y": 180
+        }
       }
     }
   }
