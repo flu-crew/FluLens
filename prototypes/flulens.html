@@ -21,6 +21,17 @@
     --text:#c9d1d9; --muted:#8b949e; --dim:#6b7484; --accent:#7aa2f7;
     --warn:#fab219; --bad:#e06c6c; --good:#4bbf4b;
     --shadow:rgba(0,0,0,.55);
+    --surface:#1a1f28; --sel:#2b3545; --rule:#232833;
+    --title:#dce6ff;
+    --btn-hover-bg:#1b2029; --btn-hover-border:#37414f;
+    --bar-bg:#20252e;
+    --table-border:#1b1f27; --table-hover:rgba(255,255,255,.04);
+    --verdict-good-border:#1c5c2b; --verdict-good-bg:rgba(12,163,12,.09);
+    --verdict-warn-border:#6b5410; --verdict-warn-bg:rgba(250,178,25,.09);
+    --verdict-bad-border:#6b2020; --verdict-bad-bg:rgba(208,59,59,.10);
+    --slider-track:#1f242e; --slider-thumb:#7aa2f7; --slider-thumb-hover:#9ab8fa;
+    --badge-bg:rgba(122,162,247,.12); --badge-text:#7aa2f7; --badge-border:rgba(122,162,247,.3);
+    --kbd-bg:#1e2430; --kbd-border:#303846; --kbd-text:#c9d1d9;
     /* Logo. The instrument is a brighter blue than --accent on purpose; the
        specimen keeps its purple, and green is left alone so it never competes
        with --good on a "Looks real" verdict. */
@@ -39,6 +50,17 @@
     --text:#22221f; --muted:#5a5a54; --dim:#8a8a82; --accent:#2a78d6;
     --warn:#8a5b00; --bad:#b02525; --good:#0a7a0a;
     --shadow:rgba(0,0,0,.16);
+    --surface:#e2e2dc; --sel:#d0d0c8; --rule:#dcdcd5;
+    --title:#0f172a;
+    --btn-hover-bg:#deded8; --btn-hover-border:#bcbcb5;
+    --bar-bg:#deded8;
+    --table-border:#e0e0d8; --table-hover:rgba(0,0,0,.03);
+    --verdict-good-border:#8cd49a; --verdict-good-bg:rgba(10,122,10,.08);
+    --verdict-warn-border:#dec070; --verdict-warn-bg:rgba(218,148,0,.08);
+    --verdict-bad-border:#e89696; --verdict-bad-bg:rgba(176,37,37,.08);
+    --slider-track:#dcdcd5; --slider-thumb:#2a78d6; --slider-thumb-hover:#1c62b5;
+    --badge-bg:rgba(42,120,214,.10); --badge-text:#1d5ca8; --badge-border:rgba(42,120,214,.25);
+    --kbd-bg:#e6e6df; --kbd-border:#cccbc2; --kbd-text:#33332d;
     /* Chosen for the pale surface, not derived by dimming the dark values —
        #4dabf7 on #fcfcfb is 2.2:1 and effectively invisible. */
     --logo-lens:#0b6bbf; --logo-core:#7c3aed; --logo-knob:#6d28d9;
@@ -86,9 +108,11 @@
   .hgroup.right{justify-content:flex-end}
   .tools{display:flex;align-items:center;gap:6px}
   button{font:12px system-ui;color:var(--text);background:var(--panel2);
-    border:1px solid var(--border);border-radius:7px;padding:5px 10px;cursor:pointer}
-  button:hover{border-color:#37414f;background:#1b2029}
-  button:disabled{opacity:.45;cursor:default}
+    border:1px solid var(--border);border-radius:7px;padding:5px 10px;cursor:pointer;
+    transition:all .15s ease}
+  button:hover{border-color:var(--btn-hover-border);background:var(--btn-hover-bg)}
+  button:active{transform:scale(0.98)}
+  button:disabled{opacity:.45;cursor:default;transform:none}
   button.on{border-color:var(--accent);color:#dce6ff}
   .stat{font:11px ui-monospace,monospace;color:var(--muted);white-space:nowrap}
   /* In the sidebar the run summary has a narrow column, so its chip and stat
@@ -99,7 +123,19 @@
   .stat b{color:var(--text);font-weight:600}
   .stat .good{color:var(--good)}
   select{font:12px system-ui;color:var(--text);background:var(--panel2);
-    border:1px solid var(--border);border-radius:7px;padding:4px 6px;cursor:pointer}
+    border:1px solid var(--border);border-radius:7px;padding:4px 6px;cursor:pointer;
+    transition:border-color .15s ease}
+  select:focus{outline:none;border-color:var(--accent)}
+
+  /* Custom modern range sliders */
+  input[type=range]{-webkit-appearance:none;appearance:none;background:transparent;cursor:pointer;height:18px}
+  input[type=range]:focus{outline:none}
+  input[type=range]::-webkit-slider-runnable-track{height:5px;border-radius:3px;background:var(--slider-track);border:1px solid var(--border);transition:all .15s ease}
+  input[type=range]::-moz-range-track{height:5px;border-radius:3px;background:var(--slider-track);border:1px solid var(--border);transition:all .15s ease}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:13px;height:13px;border-radius:50%;background:var(--slider-thumb);margin-top:-4.5px;box-shadow:0 1px 4px var(--shadow);transition:transform .12s ease,background-color .12s ease}
+  input[type=range]::-moz-range-thumb{width:13px;height:13px;border-radius:50%;background:var(--slider-thumb);border:none;box-shadow:0 1px 4px var(--shadow);transition:transform .12s ease,background-color .12s ease}
+  input[type=range]:hover::-webkit-slider-thumb{transform:scale(1.2);background:var(--slider-thumb-hover)}
+  input[type=range]:hover::-moz-range-thumb{transform:scale(1.2);background:var(--slider-thumb-hover)}
 
   #shell{flex:1;display:flex;min-height:0}
   /* The two panes are the only things in this app that scroll, and on a Mac set
@@ -136,7 +172,32 @@
      apart — so a stack of rows read as ragged rather than as one control group.
      :first-child deliberately excludes .val, which is the right-hand readout. */
   .fld > span:first-child{width:94px;flex:none}
-  .fld input[type=range]{flex:1;accent-color:var(--accent);min-width:0}
+  .sec-head{display:flex;align-items:center;justify-content:space-between;cursor:pointer;user-select:none;margin-bottom:8px}
+  .sec-head h4{margin:0;pointer-events:none}
+  .sec-head:hover h4{color:var(--text)}
+  .sec-chevron{font-size:9px;color:var(--dim);transition:transform .18s ease;display:inline-block;flex:none}
+  .sec.collapsed .sec-chevron{transform:rotate(-90deg)}
+  .sec.collapsed .sec-body{display:none}
+  .sec.collapsed .sec-head{margin-bottom:0}
+
+  .pill-badge{font:10px ui-monospace,monospace;padding:1px 6px;border-radius:10px;background:var(--badge-bg);color:var(--badge-text);border:1px solid var(--badge-border);font-weight:600;white-space:nowrap;display:inline-flex;align-items:center;gap:4px}
+  .pill-btn{cursor:pointer;background:transparent;border:none;color:inherit;padding:0;font:inherit;text-decoration:underline}
+  .mini-btn{font:10px system-ui;padding:2px 6px;border-radius:5px;border:1px solid var(--border);background:var(--panel2);color:var(--muted);cursor:pointer;transition:all .12s ease}
+  .mini-btn:hover{color:var(--text);border-color:var(--accent);background:var(--btn-hover-bg)}
+  .mini-btngroup{display:flex;gap:4px;align-items:center}
+
+  .search-wrap{position:relative;display:flex;align-items:center;flex:none}
+  .search-input{font:11px system-ui,-apple-system,"SF Pro Text",Segoe UI,sans-serif;background:var(--panel2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:4px 24px 4px 8px;width:145px;transition:width .2s ease,border-color .15s ease,background .15s ease}
+  .search-input:focus{outline:none;border-color:var(--accent);width:175px;background:var(--bg)}
+  .search-input::placeholder{color:var(--dim)}
+  .search-icon{position:absolute;right:7px;font-size:10px;color:var(--dim);pointer-events:none}
+
+  .kbd{font:10px ui-monospace,monospace;padding:2px 5px;border-radius:4px;background:var(--kbd-bg);border:1px solid var(--kbd-border);color:var(--kbd-text);box-shadow:0 1px 0 var(--border)}
+  .shortcut-row{display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);font-size:11px}
+  .shortcut-row:last-child{border-bottom:none}
+  .shortcut-keys{display:flex;gap:4px}
+
+  .fld input[type=range]{flex:1;min-width:0}
   /* Wide enough for the longest readout any of these sliders produces ("2000",
      "100%") and no wider. At 50px a three-digit value left ~30px of dead space
      between the slider and its own number, which read as the slider failing to
@@ -177,7 +238,7 @@
   .lramp div{flex:1}
   .lticks{display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;
     font:9px ui-monospace,monospace;color:var(--dim);margin-top:3px}
-  .note{font:10px/1.55 ui-monospace,monospace;color:var(--dim);white-space:pre-line}
+  .note{font:11px/1.55 system-ui,-apple-system,"SF Pro Text",Segoe UI,sans-serif;color:var(--muted);white-space:normal}
   /* `class="dim"` was in use at two places in the panel with no rule behind it,
      so text meant to read as secondary ("no DP4 in the LoFreq VCF for this
      position") rendered at full weight — indistinguishable from a finding.
@@ -202,7 +263,7 @@
     background:var(--panel);border:1px solid var(--border);border-radius:8px;
     padding:7px 9px;font:11px/1.5 ui-monospace,monospace;
     box-shadow:0 8px 26px var(--shadow);max-width:280px}
-  #tip b{color:#dce6ff}
+  #tip b{color:var(--title)}
   #tip .k{color:var(--dim)}
   #drop{position:absolute;inset:0;display:none;align-items:center;justify-content:center;
     background:rgba(14,16,20,.88);border:2px dashed var(--accent);
@@ -223,119 +284,309 @@
   #loadname{font:600 13px ui-monospace,monospace;letter-spacing:.2px}
   #loadphase{font:12px ui-monospace,monospace;color:var(--muted)}
 
-  /* detail panel */
-  .dl{display:grid;grid-template-columns:auto 1fr;gap:2px 9px;
-    font:11px ui-monospace,monospace;margin-bottom:9px}
-  .dl dt{color:var(--dim)}
-  .dl dd{margin:0;color:var(--text);word-break:break-word}
-  .mut{font:15px ui-monospace,monospace;font-weight:600;color:#dce6ff;margin-bottom:2px}
-  .sub{font:11px ui-monospace,monospace;color:var(--muted);margin-bottom:10px}
-  /* Panel sections. The pile-up stacks up to three answers of increasing width
-     — the read, the base, the call — and run together they read as one long
-     block with no telling where one ends. A rule and a named heading each, and
-     the heading is there even when a section is alone, so the reader always
-     knows which question the text under it answers. Same type as the header's
-     selector labels, for the same reason: it is a label, not content. */
-  /* `.dsec`, NOT `.psec` — that name was already taken by the detail panel's
-     own sub-label ("variant summary", "strand balance", 9px uppercase mono, 8
-     uses in renderVariant). Reusing it made these sections inherit its
-     text-transform, so a title typed "Selected Read" rendered "SELECTED READ".
-     Second time a name already in this file has been quietly reused; grep
-     first. `.dsec` is the top-level section, `.psec` the labels inside one. */
-  .dsec{border-top:1px solid var(--border);padding-top:12px;margin-top:12px}
-  .dsec:first-child{border-top:none;padding-top:0;margin-top:0}
-  .subhead{font:600 12px system-ui;letter-spacing:.2px;text-transform:none;
-    color:var(--picklabel);margin-bottom:8px}
-  .bar{height:5px;border-radius:3px;background:#20252e;overflow:hidden;margin:3px 0 8px}
-  .bar i{display:block;height:100%}
-  .verdict{border-radius:7px;padding:7px 9px;margin:8px 0;font-size:11px;line-height:1.5;
-    border:1px solid var(--border);background:var(--panel2)}
-  .verdict.good{border-color:#1c5c2b;background:rgba(12,163,12,.09)}
-  .verdict.warn{border-color:#6b5410;background:rgba(250,178,25,.09)}
-  .verdict.bad{border-color:#6b2020;background:rgba(208,59,59,.10)}
-  .verdict b{display:block;margin-bottom:3px}
-  table.site{width:100%;border-collapse:collapse;font:10px ui-monospace,monospace}
-  table.site th{text-align:left;color:var(--dim);font-weight:400;
-    border-bottom:1px solid var(--border);padding:3px 4px}
-  table.site td{padding:2px 4px;border-bottom:1px solid #1b1f27}
-  table.site tr:hover td{background:rgba(255,255,255,.04)}
-  .empty{color:var(--dim);font-size:12px;line-height:1.7;padding:6px 0}
-  /* Tags one entry in a marker LIST as numbered for a subtype this reference is
-     not. The reasoning belongs in OFF_SUBTYPE_WARN, which has room for it; a
-     list of nineteen would drown in nineteen copies of the same paragraph, so
-     inline there is only the label and one footnote under the list. */
-  .unconf{font:9px ui-monospace,monospace;color:var(--warn);border:1px solid #6b5410;
-    border-radius:4px;padding:0 3px;margin-left:4px;white-space:nowrap;
-    background:rgba(250,178,25,.09)}
-  /* Same shape as .unconf, --bad rather than --warn. The two tags can appear on
-     one marker and have to be told apart at a glance: unconfirmed is "measured,
-     wrong ruler", no coverage is "never measured", and the second is worse. */
-  .nocov{font:9px ui-monospace,monospace;color:var(--bad);border:1px solid #7a3030;
-    border-radius:4px;padding:0 3px;margin-left:4px;white-space:nowrap;
-    background:rgba(224,108,108,.10)}
-  /* Third of the same family, and the one that needs the most care to read.
-     There ARE reads here — often hundreds — but not enough of them survived
-     overlap removal and the quality floor for any caller to be allowed to
-     evaluate the position. So it is neither "measured and clean" nor "no data":
-     it is unexamined, at a depth that looks perfectly adequate in the coverage
-     track. --warn rather than --bad because the reads exist; the objection is
-     to concluding anything from their silence. */
-  .noeval{font:9px ui-monospace,monospace;color:var(--warn);border:1px solid #6b5410;
-    border-radius:4px;padding:0 3px;margin-left:4px;white-space:nowrap;
-    background:rgba(250,178,25,.09)}
-  /* The site listing is UNFILTERED in the nucleotides view, so it carries rows
-     the variants view hides. Dimming them keeps that difference on screen: the
-     reader clicked something painted and gets it, without the panel quietly
-     redefining what "calls here" counts. Removing them is what caused the bug;
-     showing them undifferentiated would only move it. */
-  table.site tr.filt td{opacity:.5}
-  .ftag{font:9px ui-monospace,monospace;color:var(--dim);border:1px solid var(--border);
-    border-radius:4px;padding:0 3px;margin-left:4px;white-space:nowrap}
-  /* The call that changes the SELECTED base, when one is selected. The panel
-     lists the whole codon, so without this the reader has to re-derive which of
-     three rows belongs to the base under their own selection band. */
-  table.site tr.onbase td:first-child{box-shadow:inset 2px 0 0 var(--accent)}
+  /* Detail Panel styling: subheaders match Left Sidebar .sec h4 identically with visible separator bars */
+  .psec, .subhead, #detail .psec, #detail .subhead, #detail h4, .dsec > .subhead, #trust .psec {
+    font-family: system-ui, -apple-system, "SF Pro Text", Segoe UI, sans-serif !important;
+    font-size: 11px !important;
+    font-weight: 600 !important;
+    color: var(--muted) !important;
+    text-transform: uppercase !important;
+    letter-spacing: .6px !important;
+    margin: 16px 0 6px !important;
+    padding-top: 10px !important;
+    border-top: 1px solid var(--border) !important;
+    display: block !important;
+  }
+  #detailbody > .psec:first-child,
+  #detailbody > .subhead:first-child,
+  #detailbody > .dsec:first-child,
+  #detailbody > .dsec:first-child > .subhead:first-child {
+    margin-top: 0 !important;
+    padding-top: 0 !important;
+    border-top: none !important;
+  }
 
-  /* amino-acid change block */
-  .aachange{border:1px solid var(--border);background:var(--panel2);
-    border-radius:9px;padding:10px 8px 8px;margin:2px 0 0}
-  .aarow{display:flex;align-items:center;justify-content:center;gap:6px}
-  .aaside{flex:1;text-align:center;min-width:0}
-  .aalab{font:9px ui-monospace,monospace;color:var(--dim);
-    text-transform:uppercase;letter-spacing:.5px;margin-bottom:1px}
-  .aabig{font:26px/1.05 ui-monospace,monospace;font-weight:600}
-  .aafull{font:11px system-ui;color:var(--text);margin-top:2px;
-    overflow:hidden;text-overflow:ellipsis}
-  .aa3{font:10px ui-monospace,monospace;color:var(--dim)}
-  .aaarrow{font:19px system-ui;color:var(--muted);flex:none;padding:0 2px}
-  .aafoot{display:flex;justify-content:space-between;align-items:center;
-    margin-top:9px;padding-top:7px;border-top:1px solid var(--border);
-    font:10px ui-monospace,monospace;color:var(--dim)}
-  .aafoot .chg{color:var(--warn);font-weight:600}
-  .aafoot .same{color:var(--muted)}
+  .dsec {
+    border-top: 1px solid var(--border);
+    padding-top: 10px;
+    margin-top: 12px;
+  }
+  .dsec:first-child {
+    border-top: none;
+    padding-top: 0;
+    margin-top: 0;
+  }
 
-  /* log-scaled frequency bar */
-  .fbar{margin:0 0 4px}
-  .fbrow{display:flex;align-items:center;gap:9px}
-  .fbval{flex:none;width:54px;text-align:right;
-    font:11px ui-monospace,monospace;font-weight:600}
-  .fbtog{display:flex;align-items:center;gap:5px;margin-top:7px;
-    font:10px ui-monospace,monospace;color:var(--dim);cursor:pointer}
-  .fbtog input{margin:0}
-  .fbtrack{flex:1;min-width:0;position:relative;height:7px;border-radius:4px;
-    background:var(--panel2);border:1px solid var(--border)}
-  .fbtrack i{border-radius:3px 0 0 3px}
-  .fbtrack i{display:block;height:100%}
-  .fbtrack span{position:absolute;top:0;bottom:0;width:1px;
-    background:var(--border)}
-  .fbtrack u{position:absolute;top:-2px;bottom:-2px;width:2px;
-    background:var(--text);border-radius:1px;transform:translateX(-1px)}
-  .psec{font:9px ui-monospace,monospace;color:var(--dim);
-    text-transform:uppercase;letter-spacing:.6px;
-    margin:15px 0 7px;padding-top:11px;border-top:1px solid var(--border)}
-  .fbkey{flex:1;min-width:0;position:relative;height:12px;margin-top:2px;
-    font:9px ui-monospace,monospace;color:var(--dim)}
-  .fbkey b{position:absolute;top:0;font-weight:400;white-space:nowrap}
+  /* Standardized font family and 11px font size throughout right sidebar */
+  aside#detail, #detailbody {
+    font-family: system-ui, -apple-system, "SF Pro Text", Segoe UI, sans-serif;
+    font-size: 11px;
+    line-height: 1.55;
+    color: var(--text);
+  }
+
+  #detail .dl, .dl {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 3px 10px;
+    font-family: system-ui, -apple-system, "SF Pro Text", Segoe UI, sans-serif;
+    font-size: 11px;
+    line-height: 1.55;
+    margin-bottom: 8px;
+  }
+  #detail .dl dt, .dl dt {
+    color: var(--dim);
+    font-weight: 500;
+  }
+  #detail .dl dd, .dl dd {
+    margin: 0;
+    color: var(--text);
+    word-break: break-word;
+    font-family: system-ui, -apple-system, "SF Pro Text", Segoe UI, sans-serif;
+    font-size: 11px;
+  }
+
+  #detail .mut, .mut {
+    font-family: system-ui, -apple-system, "SF Pro Text", Segoe UI, sans-serif;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--title);
+    margin-bottom: 2px;
+  }
+  #detail .sub, .sub {
+    font-family: system-ui, -apple-system, "SF Pro Text", Segoe UI, sans-serif;
+    font-size: 11px;
+    color: var(--muted);
+    margin-bottom: 8px;
+  }
+
+  .bar { height: 5px; border-radius: 3px; background: var(--bar-bg); overflow: hidden; margin: 3px 0 8px; }
+  .bar i { display: block; height: 100%; }
+
+  #detail .note, #detail .desc, #detail .empty, .note, .desc, .empty {
+    font-family: system-ui, -apple-system, "SF Pro Text", Segoe UI, sans-serif;
+    font-size: 11px;
+    line-height: 1.55;
+    color: var(--muted);
+    white-space: normal;
+    margin-top: 6px;
+  }
+  #detail .empty, .empty {
+    color: var(--dim);
+    padding: 6px 0;
+  }
+  #detail .note b, #detail .desc b, .note b, .desc b {
+    color: var(--text);
+    font-weight: 600;
+  }
+
+  #detail .verdict, .verdict {
+    border-radius: 7px;
+    padding: 8px 10px;
+    margin: 8px 0;
+    font-family: system-ui, -apple-system, "SF Pro Text", Segoe UI, sans-serif;
+    font-size: 11px;
+    line-height: 1.55;
+    border: 1px solid var(--border);
+    background: var(--panel2);
+    color: var(--text);
+  }
+  #detail .verdict.good, .verdict.good { border-color: var(--verdict-good-border); background: var(--verdict-good-bg); }
+  #detail .verdict.warn, .verdict.warn { border-color: var(--verdict-warn-border); background: var(--verdict-warn-bg); }
+  #detail .verdict.bad, .verdict.bad { border-color: var(--verdict-bad-border); background: var(--verdict-bad-bg); }
+  #detail .verdict b, .verdict b {
+    display: block;
+    margin-bottom: 3px;
+    font-family: system-ui, -apple-system, "SF Pro Text", Segoe UI, sans-serif;
+    font-size: 11px;
+    font-weight: 600;
+  }
+
+  #detail table.site, table.site {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: system-ui, -apple-system, "SF Pro Text", Segoe UI, sans-serif;
+    font-size: 11px;
+    line-height: 1.45;
+  }
+  #detail table.site th, table.site th {
+    text-align: left;
+    color: var(--dim);
+    font-weight: 600;
+    font-size: 11px;
+    border-bottom: 1px solid var(--border);
+    padding: 4px 5px;
+  }
+  #detail table.site td, table.site td {
+    padding: 3px 5px;
+    font-size: 11px;
+    border-bottom: 1px solid var(--table-border);
+  }
+  #detail table.site tr:hover td, table.site tr:hover td { background: var(--table-hover); }
+  table.site tr.filt td { opacity: .5; }
+  table.site tr.onbase td:first-child { box-shadow: inset 2px 0 0 var(--accent); }
+
+  #detail .unconf, .unconf {
+    font-family: system-ui, -apple-system, "SF Pro Text", Segoe UI, sans-serif;
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--warn);
+    border: 1px solid var(--verdict-warn-border);
+    border-radius: 4px;
+    padding: 1px 4px;
+    margin-left: 4px;
+    white-space: nowrap;
+    background: rgba(250,178,25,.09);
+  }
+  #detail .nocov, .nocov {
+    font-family: system-ui, -apple-system, "SF Pro Text", Segoe UI, sans-serif;
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--bad);
+    border: 1px solid var(--verdict-bad-border);
+    border-radius: 4px;
+    padding: 1px 4px;
+    margin-left: 4px;
+    white-space: nowrap;
+    background: rgba(208,59,59,.10);
+  }
+  #detail .noeval, .noeval {
+    font-family: system-ui, -apple-system, "SF Pro Text", Segoe UI, sans-serif;
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--warn);
+    border: 1px solid var(--verdict-warn-border);
+    border-radius: 4px;
+    padding: 1px 4px;
+    margin-left: 4px;
+    white-space: nowrap;
+    background: rgba(250,178,25,.09);
+  }
+  #detail .ftag, .ftag {
+    font-family: system-ui, -apple-system, "SF Pro Text", Segoe UI, sans-serif;
+    font-size: 10px;
+    font-weight: 500;
+    color: var(--dim);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 1px 4px;
+    margin-left: 4px;
+    white-space: nowrap;
+  }
+
+  /* Amino-acid change block */
+  .aachange {
+    border: 1px solid var(--border);
+    background: var(--panel2);
+    border-radius: 9px;
+    padding: 10px 8px 8px;
+    margin: 2px 0 8px;
+  }
+  .aarow { display: flex; align-items: center; justify-content: center; gap: 6px; }
+  .aaside { flex: 1; text-align: center; min-width: 0; }
+  .aalab {
+    font-family: system-ui, -apple-system, "SF Pro Text", Segoe UI, sans-serif;
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--dim);
+    text-transform: uppercase;
+    letter-spacing: .5px;
+    margin-bottom: 2px;
+  }
+  .aabig {
+    font-family: system-ui, -apple-system, "SF Pro Text", Segoe UI, sans-serif;
+    font-size: 24px;
+    font-weight: 700;
+    line-height: 1.1;
+  }
+  .aafull {
+    font-family: system-ui, -apple-system, "SF Pro Text", Segoe UI, sans-serif;
+    font-size: 11px;
+    color: var(--text);
+    margin-top: 2px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .aa3 {
+    font-family: system-ui, -apple-system, "SF Pro Text", Segoe UI, sans-serif;
+    font-size: 10px;
+    color: var(--dim);
+  }
+  .aaarrow {
+    font-family: system-ui, -apple-system, "SF Pro Text", Segoe UI, sans-serif;
+    font-size: 18px;
+    color: var(--muted);
+    flex: none;
+    padding: 0 4px;
+  }
+  .aafoot {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 9px;
+    padding-top: 7px;
+    border-top: 1px solid var(--border);
+    font-family: system-ui, -apple-system, "SF Pro Text", Segoe UI, sans-serif;
+    font-size: 11px;
+    color: var(--dim);
+  }
+  .aafoot .chg { color: var(--warn); font-weight: 600; }
+  .aafoot .same { color: var(--muted); }
+
+  /* Log-scaled frequency bar */
+  .fbar { margin: 0 0 4px; }
+  .fbrow { display: flex; align-items: center; gap: 9px; }
+  .fbval {
+    flex: none;
+    width: 54px;
+    text-align: right;
+    font-family: system-ui, -apple-system, "SF Pro Text", Segoe UI, sans-serif;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text);
+  }
+  .fbtog {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    margin-top: 7px;
+    font-family: system-ui, -apple-system, "SF Pro Text", Segoe UI, sans-serif;
+    font-size: 11px;
+    color: var(--dim);
+    cursor: pointer;
+  }
+  .fbtog input { margin: 0; }
+  .fbtrack {
+    flex: 1;
+    min-width: 0;
+    position: relative;
+    height: 7px;
+    border-radius: 4px;
+    background: var(--panel2);
+    border: 1px solid var(--border);
+  }
+  .fbtrack i { border-radius: 3px 0 0 3px; display: block; height: 100%; }
+  .fbtrack span { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--border); }
+  .fbtrack u {
+    position: absolute;
+    top: -2px;
+    bottom: -2px;
+    width: 2px;
+    background: var(--text);
+    border-radius: 1px;
+    transform: translateX(-1px);
+  }
+  .fbkey {
+    flex: 1;
+    min-width: 0;
+    position: relative;
+    height: 12px;
+    margin-top: 2px;
+    font-family: system-ui, -apple-system, "SF Pro Text", Segoe UI, sans-serif;
+    font-size: 10px;
+    color: var(--dim);
+  }
+  .fbkey b { position: absolute; top: 0; font-weight: 500; white-space: nowrap; }
 
   /* detail-panel collapse tab, pinned to the pane edge */
 
@@ -351,7 +602,7 @@
     font-family:ui-monospace,monospace}
   .modesw button{border:0;background:transparent;color:var(--dim);padding:1px 6px;
     cursor:pointer;line-height:1.4;font-size:9px}
-  .modesw button.on{background:var(--sel);color:var(--text)}
+  .modesw button.on{background:var(--sel);color:var(--text);font-weight:600}
   /* The header copy. Bigger type and real padding so it reads as the primary
      control rather than a status readout; the small copy over the matrix keeps
      its original size, since there it sits among the column headers. */
@@ -398,19 +649,7 @@
       <circle cx="11.35" cy="5.68"  r="1.05" fill="var(--logo-knob)"/>
       <circle cx="14.25" cy="7.35"  r="1.05" fill="var(--logo-knob)"/>
     </svg>FluLens <small>influenza variant visualizer</small></div>
-  <!-- The two hgroups are empty flex:1 1 0 springs. They stay EQUAL width at any
-       window size, which centres the viewer selector and stops it sliding out
-       from under the cursor. The run summary (dimensions, calls) and the
-       per-view count moved to the sidebar, under the Open-run button. -->
   <div class="hgroup"></div>
-  <!-- The mode is the single most consequential control in the app — it decides
-       what every cell MEANS — and it spent its life as 9px text tucked beside
-       the zoom buttons. Centred, labelled, and given real hit targets. -->
-  <!-- Two orthogonal questions, two controls. WHICH ALPHABET a cell is written
-       in (amino acids / nucleotides / selection) is independent of WHICH CALLS
-       it shows (low-frequency or consensus), and the old single row of four
-       conflated them: `variants` and `consensus` were both amino acids, while
-       `nucleotides` was silently consensus-only with nothing saying so. -->
   <div class="modepick">
     <span class="modepick-label">viewer selector</span>
     <div id="modeR" class="modesw big" title="What each cell is written in: amino acids, the nucleotides behind them, or per-codon selection"><button data-v="aminoacids">amino acids</button
@@ -419,22 +658,21 @@
   </div>
   <div class="modepick" id="vvpick">
     <span class="modepick-label">variant view</span>
-    <!-- The third option is not a third answer to "which calls" — it is the
-         answer "none of them, show me the reads". It sits on this axis anyway
-         because that is where a reader goes to change what a cell means, and
-         because it is the same question one step further down: the table, the
-         consensus, then the evidence underneath both. -->
     <div id="vvR" class="modesw big" title="Which calls are shown: every call above the filters, only what reached the sample's consensus, or the aligned reads themselves"><button data-vv="lowfreq">low frequency</button
       ><button data-vv="consensus">consensus</button
       ><button data-vv="reads">read pile-up</button></div>
   </div>
+  <div class="hgroup"></div>
+  <div class="search-wrap" title="Jump to codon (e.g. HA 222, E119V, PB2 627) — press /">
+    <input type="text" id="quicksearch" class="search-input" placeholder="Jump to codon… ( / )" autocomplete="off">
+    <span class="search-icon">🔍</span>
+  </div>
   <div class="hgroup right"></div>
   <div class="tools">
-    <!-- the ramp selector now sits beside the legend it controls, in the sidebar;
-         export moved down beside "Open run folder", its input/output pair -->
-    <button id="theme" title="Light / dark">◐</button>
-    <button id="zoomout">–</button><button id="zoomin">+</button>
-    <button id="fit">Fit</button>
+    <button id="shortcuts-btn" title="Keyboard shortcuts (?)">?</button>
+    <button id="theme" title="Light / dark (T)">◐</button>
+    <button id="zoomout" title="Zoom out (-)">–</button><button id="zoomin" title="Zoom in (+)">+</button>
+    <button id="fit" title="Fit to window (0 / F)">Fit</button>
   </div>
 </header>
 
@@ -456,7 +694,7 @@
       <div class="rowbtns">
         <button id="runnotes-toggle" title="Run summary and load notes">📋 Run notes…</button>
       </div>
-      <div id="runnotes-body">
+      <div id="runnotes-body" hidden>
         <div id="runsummary">
           <div class="chip" id="chip" hidden></div>
           <div class="stat" id="stats"></div>
@@ -474,7 +712,11 @@ variant_analysis/ and vcf_files/</div>
          scrolling sidebar, and the row-height slider — the one control that
          decides whether the stack is legible at all — went unnoticed. -->
     <div class="sec" id="readsec" hidden>
-      <h4>Read pile-up</h4>
+      <div class="sec-head" data-sec="readsec">
+        <h4>Read pile-up</h4>
+        <span class="sec-chevron">▾</span>
+      </div>
+      <div class="sec-body">
       <div class="fld"><span>stack cap</span>
         <select id="readcap" style="flex:1;min-width:0">
           <option value="4000">4,000 reads — fastest</option>
@@ -517,13 +759,18 @@ variant_analysis/ and vcf_files/</div>
           <span style="color:var(--qGood)">&ge;30 good</span>
           <span style="color:var(--qOk)">20&ndash;29 ok</span>
           <span style="color:var(--qBad)">&lt;20 poor</span></div>
+        </div>
       </div>
     </div>
 
     <!-- 2 · colour. The ramp selector lives with the legend it controls, rather
          than in the header where the connection had to be inferred. -->
-    <div class="sec legend">
-      <h4>Allele frequency</h4>
+    <div class="sec legend" id="freqsec">
+      <div class="sec-head" data-sec="freqsec">
+        <h4>Allele frequency</h4>
+        <span class="sec-chevron">▾</span>
+      </div>
+      <div class="sec-body">
       <div class="fld"><span>colour</span>
         <select id="ramp" title="One hue, validated for both themes" style="flex:1;min-width:0">
           <option value="blue">Blue</option><option value="teal">Teal</option>
@@ -599,28 +846,48 @@ the changed base's colour.</div>
       <div id="aakey" class="note" style="margin-top:4px"></div>
       <div class="note" style="margin-top:5px">no call = background
 ▲ curated site  ■ FluMut marker</div>
+      </div>
     </div>
 
     <!-- 3 · products -->
-    <div class="sec">
-      <h4>Products <span id="prodsrc"></span></h4>
-      <div class="plist" id="plist"></div>
+    <div class="sec" id="prodsec">
+      <div class="sec-head" data-sec="prodsec">
+        <h4>Products</h4>
+        <span class="sec-chevron">▾</span>
+      </div>
+      <div class="sec-body">
+        <div class="stat" id="prodsrc" style="margin-bottom:6px"></div>
+        <div class="mini-btngroup" style="margin-bottom:8px">
+          <button class="mini-btn" id="prod-all" title="Select all products">All</button>
+          <button class="mini-btn" id="prod-pri" title="Select 8 primary products">Primary</button>
+          <button class="mini-btn" id="prod-none" title="Deselect all products">None</button>
+        </div>
+        <div class="plist" id="plist"></div>
+      </div>
     </div>
 
-    <!-- 4 · metadata. Was buried inside Samples, where a reader looking for
-         "how do I load metadata" had no reason to look. -->
-    <div class="sec">
-      <h4>Metadata</h4>
-      <div class="rowbtns" style="margin-bottom:7px">
-        <button id="metapick-btn">＋ metadata CSV…</button>
+    <!-- 4 · metadata -->
+    <div class="sec" id="metasec">
+      <div class="sec-head" data-sec="metasec">
+        <h4>Metadata</h4>
+        <span class="sec-chevron">▾</span>
       </div>
-      <div id="metapick"></div>
+      <div class="sec-body">
+        <div class="rowbtns" style="margin-bottom:7px">
+          <button id="metapick-btn">＋ metadata CSV…</button>
+        </div>
+        <div id="metapick"></div>
+      </div>
     </div>
 
 <!-- 5 · parameter set -->
-    <div class="sec">
-      <h4>Parameter set</h4>
-      <div class="fld"><select id="preset" style="flex:1;min-width:0"></select></div>
+    <div class="sec" id="presetsec">
+      <div class="sec-head" data-sec="presetsec">
+        <h4>Parameter set</h4>
+        <span class="sec-chevron">▾</span>
+      </div>
+      <div class="sec-body">
+        <div class="fld"><select id="preset" style="flex:1;min-width:0"></select></div>
       <div class="rowbtns">
         <button id="preset-save">Save as…</button>
         <button id="preset-del">Delete</button>
@@ -629,11 +896,17 @@ the changed base's colour.</div>
         <button id="layout-reset" title="Resets pane widths, column widths and zoom to defaults. Filters, QC overrides and the theme stay. Browser page zoom is separate — use ⌘0 in Safari.">Reset layout</button>
       </div>
       <div class="note" id="presetnote" style="margin-top:6px"></div>
+      </div>
     </div>
 
     <!-- 6 · filters -->
     <div class="sec" id="filtersec">
-      <h4>Filters</h4>
+      <div class="sec-head" data-sec="filtersec">
+        <h4>Filters</h4>
+        <span class="sec-chevron">▾</span>
+      </div>
+      <div class="sec-body">
+        <div id="filterbadge" class="pill-badge" style="display:none;margin-bottom:8px"></div>
       <div class="fld"><label><input type="checkbox" id="fnonsyn" checked> nonsynonymous only</label></div>
       <div class="fld"><span>min depth</span>
         <input type="range" id="fdepth" min="0" max="1000" step="25" value="100">
@@ -677,12 +950,17 @@ the changed base's colour.</div>
            placeModeSwitch. -->
       <div class="note" id="consfilternote" hidden>Not applied in the consensus
         view — a consensus is established, not filtered.</div>
+      </div>
     </div>
 
-    <!-- 7 · samples. Moved to right after filters so the two filtering
-         sections sit together in every view. -->
-    <div class="sec">
-      <h4>Samples <span id="rownote"></span></h4>
+    <!-- 7 · samples -->
+    <div class="sec" id="samplesec">
+      <div class="sec-head" data-sec="samplesec">
+        <h4>Samples</h4>
+        <span class="sec-chevron">▾</span>
+      </div>
+      <div class="sec-body">
+        <div class="stat" id="rownote" style="margin-bottom:6px"></div>
       <div class="note" style="margin:0 0 5px">pass requires
         <span style="opacity:.7">(measured on all of a sample's calls,
         not the filtered ones)</span></div>
@@ -699,6 +977,7 @@ the changed base's colour.</div>
         hide samples with no calls</label></div>
       <div class="fld"><label><input type="checkbox" id="hidefail">
         hide failing samples</label></div>
+      </div>
     </div>
 
     <!-- 6b · consensus source.
@@ -716,7 +995,11 @@ the changed base's colour.</div>
          alphabet is a different viewMode entirely, so this never has to explain
          itself there. -->
     <div class="sec" id="conssec" hidden>
-      <h4>Consensus</h4>
+      <div class="sec-head" data-sec="conssec">
+        <h4>Consensus</h4>
+        <span class="sec-chevron">▾</span>
+      </div>
+      <div class="sec-body">
       <div class="fld"><span>source</span>
         <select id="conssrc" style="flex:1;min-width:0">
           <option value="derived">derived — calls &gt; 50%</option>
@@ -724,11 +1007,16 @@ the changed base's colour.</div>
         </select></div>
       <div class="fld"><label><input type="checkbox" id="cthin"> mark thin coverage</label></div>
       <div class="note" id="consnote"> </div>
+      </div>
     </div>
 
     <!-- 6c · the expanded band, in the two views that draw one. -->
     <div class="sec" id="bandsec" hidden>
-      <h4>Expanded band</h4>
+      <div class="sec-head" data-sec="bandsec">
+        <h4>Expanded band</h4>
+        <span class="sec-chevron">▾</span>
+      </div>
+      <div class="sec-body">
       <div class="fld"><span>shows</span>
         <select id="bandmode" style="flex:1;min-width:0">
           <option value="depth">depth profile — IRMA coverage</option>
@@ -737,13 +1025,14 @@ the changed base's colour.</div>
       <div class="note">Click a sample name to open its band. The depth profile
 needs no BAM and works on every run; the residue mix reads the BAM and needs at
 least 3&thinsp;px per codon. For the reads themselves, use the read pile-up view.</div>
+      </div>
     </div>
   </aside>
 
   <div id="wrap">
     <canvas id="cv"></canvas>
     <div id="tip"></div>
-    <div class="hint">scroll = zoom (over the sample list: scrolls it) · ⇧scroll / ⌥scroll = pan across / down · ⌘ctrl-scroll = row height · drag = pan</div>
+    <div class="hint">scroll = zoom (over samples: scrolls) · ⇧scroll = pan across · ⌥scroll = pan down · drag = pan · / = jump · ? = shortcuts</div>
     <div id="drop">Drop a results folder</div>
     <div id="loading">
       <div id="loadname">reading run…</div>
@@ -775,6 +1064,28 @@ least 3&thinsp;px per codon. For the reads themselves, use the read pile-up view
 </div>
 <input type="file" id="dirpick" webkitdirectory directory multiple hidden>
 <input type="file" id="metafile" accept=".csv,.tsv,.txt" hidden>
+
+<!-- Keyboard Shortcuts Modal -->
+<div id="shortcutsdlg" class="dlgwrap" style="display:none">
+  <div class="dlg" style="min-width:400px;max-width:500px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <h4 style="margin:0">Keyboard Shortcuts & Navigation</h4>
+      <button id="shortcuts-close" class="mini-btn" style="padding:2px 8px">✕</button>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:1px;margin-bottom:12px">
+      <div class="shortcut-row"><span>Zoom matrix in / out</span><div class="shortcut-keys"><span class="kbd">+</span><span class="kbd">–</span></div></div>
+      <div class="shortcut-row"><span>Fit matrix to window</span><div class="shortcut-keys"><span class="kbd">0</span> or <span class="kbd">F</span></div></div>
+      <div class="shortcut-row"><span>Toggle light / dark theme</span><div class="shortcut-keys"><span class="kbd">T</span></div></div>
+      <div class="shortcut-row"><span>Focus jump search</span><div class="shortcut-keys"><span class="kbd">/</span></div></div>
+      <div class="shortcut-row"><span>Toggle sidebar / detail panel</span><div class="shortcut-keys"><span class="kbd">[</span> <span class="kbd">]</span></div></div>
+      <div class="shortcut-row"><span>Viewer mode (AA / NT / Selection)</span><div class="shortcut-keys"><span class="kbd">1</span> <span class="kbd">2</span> <span class="kbd">3</span></div></div>
+      <div class="shortcut-row"><span>Variant view (Low-freq / Cons / Reads)</span><div class="shortcut-keys"><span class="kbd">Q</span> <span class="kbd">W</span> <span class="kbd">E</span></div></div>
+      <div class="shortcut-row"><span>Pan matrix</span><div class="shortcut-keys"><span class="kbd">⇧ scroll</span> or <span class="kbd">drag</span></div></div>
+      <div class="shortcut-row"><span>Dismiss modal / deselect</span><div class="shortcut-keys"><span class="kbd">Esc</span></div></div>
+    </div>
+    <div class="note">FluLens runs entirely on your machine. Everything stays private.</div>
+  </div>
+</div>
 
 <script>
 "use strict";
@@ -2996,6 +3307,7 @@ function applyFilters(){
   document.getElementById('filternote').textContent =
     `${keep.length.toLocaleString()} of ${stats.placed.toLocaleString()} shown · `+
     `${(stats.placed-keep.length).toLocaleString()} hidden`;
+  updateFilterBadge();
   rebuildRowOrder();
   if(squareCells && !userZoomed) rowPx=squareRowPx();
   if(!afSource&&V.n) reconcileFrequencies();
@@ -3450,7 +3762,7 @@ for(const id of ['fdepth','ffreq','falt','fnonsyn','fsites','fassess','flofreq',
    one click and they persist. The built-ins are starting points, not defaults
    to be precious about — "Save as…" over one to make it yours. */
 const BUILTIN_PRESETS={
-  'Default':          {depth:100,freq:0,nonsyn:false,sites:'all',lofreq:true,ivar:true,gatk:true,
+  'Default':          {depth:100,freq:0,alt:0,assess:'all',nonsyn:true,sites:'all',lofreq:true,ivar:true,gatk:true,
                        hidden:[],hideEmpty:false,hideFail:false,
                        qc:{minCalls:1,minMedDepth:200,maxLowFrac:0.25},sort:[]},
   'High-confidence':  {depth:500,freq:2,nonsyn:true,sites:'all',lofreq:true,ivar:true,gatk:true,
@@ -4729,7 +5041,7 @@ function reconcileFrequencies(){
 
 /* ============================================================ assessment ==
    One verdict per call, over everything that bears on whether it is real:
-   strand balance, depth at the position, allele frequency, and the number of
+   Strand Balance, depth at the position, allele frequency, and the number of
    reads actually SUPPORTING it.
 
    That last one is not depth and the difference matters. Depth counts every
@@ -7004,11 +7316,9 @@ function markerOffSubtype(marker){
   });
 }
 const OFF_SUBTYPE_WARN=m=>markerOffSubtype(m)
-  ? `<div class="verdict warn" style="margin-top:6px"><b>Unconfirmed — wrong subtype</b>`+
-    `${esc(String(m).split(':')[0])} markers are numbered for H5/N1, and this reference is `+
-    `not. The position is read against a different numbering scheme, and H5 and H3 have `+
-    `diverged enough that the same residue need not mean the same thing. Treat as `+
-    `unreliable unless the numbering has been checked by hand.</div>`
+  ? `<div class="verdict warn" style="margin-top:6px"><b>Unconfirmed subtype numbering</b>`+
+    `${esc(String(m).split(':')[0])} markers use H5/N1 coordinates. This reference genome uses a `+
+    `different subtype. Verify residue positions manually.</div>`
   : '';
 
 /* The same fact stated once for the whole run, for the sidebar. A function
@@ -7044,13 +7354,13 @@ function subtypeNote(){
 }
 
 function flumutSection(i){
-  const head='<div class="psec">markers · FluMut</div>';
+  const head='<div class="psec">Markers · FluMut</div>';
   const note=t=>head+`<div class="empty">${t}</div>`;
   if(fmState!=='ok')
     return note(fmState==='nofile'
       ? 'A flumut directory is present but has no <b>markers.tsv</b>.'
       : 'No FluMut results in this run. Enable <b>FLUMUT=TRUE</b> in the Flumina '+
-        'config, or run it on the IRMA consensus and drop the output in '+
+        'config, or run it on the IRMA consensus and place output in '+
         '<b>variant_analysis/flumut/</b>.');
 
   const alt=V.alt[i]===255?null:AAS[V.alt[i]];
@@ -7058,11 +7368,6 @@ function flumutSection(i){
   const P   = refProt && refProt.get(V.prod[i]);
   const refRes = P ? P[V.aapos[i]-1] : null;
 
-  /* A match on the alt residue alone is not enough. Where OUR reference already
-     carries the marker's alt, every synonymous call at that codon "matches" it
-     trivially — on the cow run that was 53 of 72 raw matches, all of them
-     meaningless. A marker is only in the making if the substitution actually
-     changes the residue INTO it. */
   const hit = (raw && V.nonsyn[i] && refRes!==raw.alt) ? raw : null;
   const already = raw && refRes===raw.alt ? raw : null;
 
@@ -7073,24 +7378,21 @@ function flumutSection(i){
   let html=head;
   if(hit){
     const eff=[...hit.effects];
-    html+=`<div class="verdict warn"><b>Would create ${esc(hit.marker)}</b>`+
-      `${esc(eff.join(' · ')||'known marker')}<br><br>`+
-      `Present at ${(V.freq[i]*100).toFixed(2)}%, which is below consensus. FluMut screens `+
-      `the consensus, so it does not report this marker for this sample — it is a marker `+
-      `in the making rather than one that is there.</div>`;
+    html+=`<div class="verdict warn"><b>Creates known marker: ${esc(hit.marker)}</b>`+
+      `${esc(eff.join(' · ')||'Known marker')}<br><br>`+
+      `Variant frequency is ${(V.freq[i]*100).toFixed(2)}% (below consensus threshold). `+
+      `FluMut screens consensus sequences and does not report this sub-consensus variant.</div>`;
     html+=OFF_SUBTYPE_WARN(hit.marker);
     if(hit.lit) html+=`<div class="note" style="margin:-4px 0 8px">${esc(hit.lit)}</div>`;
   } else if(already){
-    html+=`<div class="verdict"><b>Reference already carries ${esc(already.marker)}</b>`+
+    html+=`<div class="verdict"><b>Reference sequence contains marker: ${esc(already.marker)}</b>`+
       `${esc([...already.effects][0]||'')}<br><br>`+
-      `The reference has <b>${esc(already.alt)}</b> at this position, so the marker is `+
-      `background rather than a finding. This call `+
-      `${V.nonsyn[i]?`substitutes <b>${esc(alt)}</b>, moving away from it`
-                    :'is synonymous and does not change the residue'}.</div>`;
+      `The reference genome contains <b>${esc(already.alt)}</b> at this position. `+
+      `${V.nonsyn[i]?`This variant substitutes <b>${esc(alt)}</b>.`:'This variant is synonymous and does not alter the amino acid residue.'}</div>`;
     html+=OFF_SUBTYPE_WARN(already.marker);
   } else if(atPos){
-    html+=`<div class="verdict"><b>Marker site, different substitution</b>`+
-      `Position ${V.aapos[i]} of ${esc(V.prod[i])} carries the known marker `+
+    html+=`<div class="verdict"><b>Marker site with alternate substitution</b>`+
+      `Position ${V.aapos[i]} in ${esc(V.prod[i])} contains known marker `+
       `<b>${esc(atPos.marker)}</b>, but this variant substitutes `+
       `<b>${esc(alt||'?')}</b> instead of ${esc(atPos.alt)}.</div>`;
     html+=OFF_SUBTYPE_WARN(atPos.marker);
@@ -7098,19 +7400,8 @@ function flumutSection(i){
     html+=`<div class="empty">Not a known FluMut marker position.</div>`;
   }
 
-  // what the sample's consensus itself carries
   const mine=fmSample.get(names[V.row[i]]);
   if(mine&&mine.size){
-    /* Confirmed markers first. The list is truncated at 8, and on an off-subtype
-       run the unconfirmable ones can fill every slot — the swine H3N2 reference
-       carries 10 HA1-5 and 9 NA-1 against 50 internal-gene markers. Tagging them
-       is not enough on its own if the tagging pushes the trustworthy ones out of
-       sight, so the ordering has to agree with the labelling. */
-    /* No coverage tag here, deliberately. This list is the PLAIN FluMut screen,
-       which reads the IRMA consensus — built from the sample's own reads, so a
-       position with none simply is not in it. The reference-base-stands-in
-       problem belongs to the low-frequency screen alone, and tagging both would
-       invent a doubt about the one screen that does not have it. */
     const ent=[...mine.entries()]
       .map(([m,d])=>({m,d,off:markerOffSubtype(m)}))
       .sort((a,b)=>a.off-b.off);
@@ -7118,48 +7409,20 @@ function flumutSection(i){
     const list=ent.slice(0,8).map(e=>
       `<b>${esc(e.m)}</b> ${esc([...e.d.effects][0]||'')}`+
       (e.off?`<span class="unconf">unconfirmed</span>`:'')).join('<br>');
-    html+=`<div class="note" style="margin-top:8px">this sample's consensus carries `+
+    html+=`<div class="note" style="margin-top:8px">Sample consensus contains `+
       `${mine.size} marker${mine.size>1?'s':''}:<br>${list}`+
       (mine.size>8?`<br>…and ${mine.size-8} more`:'')+
-      /* Self-contained on purpose. The obvious phrasing is "see above", but the
-         full warning only renders when the CLICKED variant sits at a marker
-         site, and a label whose numbering could not be calibrated never gets
-         that far — on this run HA1-5 and NA-1 are exactly those labels, so
-         "above" would point at nothing in the one case this fires most. */
-      (nOff?`<br><br>${nOff} of these ${nOff>1?'are':'is'} numbered for H5/N1, which this `+
-            `reference is not — read against a different scheme, so treat `+
-            `${nOff>1?'them':'it'} as unreliable.`:'')+`</div>`;
+      (nOff?`<br><br>${nOff} marker${nOff>1?'s use':' uses'} H5/N1 coordinates and may not match this subtype.`:'')+`</div>`;
   } else {
-    html+=`<div class="note" style="margin-top:8px">this sample's consensus carries no `+
-      `markers beyond the reference's own</div>`;
+    html+=`<div class="note" style="margin-top:8px">Sample consensus contains no markers beyond the reference genome.</div>`;
   }
 
-  /* Below-consensus markers, listed separately and only where they ADD to the
-     consensus set. Repeating a marker the consensus already carries would imply
-     two findings where there is one. */
   if(fmLowState==='ok'){
     const low=fmLowSample.get(names[V.row[i]]);
-    const already=mine||new Map();
-    const extra=low ? [...low.entries()].filter(([m])=>!already.has(m)) : [];
+    const alreadyMap=mine||new Map();
+    const extra=low ? [...low.entries()].filter(([m])=>!alreadyMap.has(m)) : [];
     if(extra.length){
-      /* THIS is the screen the coverage check belongs to. It paints LoFreq
-         calls onto the reference, so where the sample has no reads the
-         REFERENCE base stands in and FluMut screens it as though it had been
-         observed. On the 2026-08-09 run that is 7,548 positions across 16
-         samples. A marker there is not a finding — it is the reference talking.
-
-         Sorted ahead of the off-subtype tag: "never measured" is a stronger
-         objection than "measured against the wrong ruler". */
       const sname=names[V.row[i]];
-      /* noeval is deliberately NOT a weaker nocov. nocov says the reference base
-         stood in for absent data; noeval says the reads are there and no caller
-         was permitted to look at them, because the depth they see after overlap
-         removal and the quality floor falls under the run's MIN_DEPTH. A reader
-         checking the coverage track sees ample depth in both cases and would
-         otherwise read the silence as a negative result.
-
-         Only asked when the run published column 4 AND its own MIN_DEPTH; with
-         either missing the flag never appears, rather than being guessed. */
       const ord=extra.map(([m,d])=>{ const s=markerSupport(sname,m);
                    const nocov=!!(s&&s.depth===0);
                    return {m,d,off:markerOffSubtype(m), nocov,
@@ -7174,34 +7437,16 @@ function flumutSection(i){
         (e.nocov?`<span class="nocov">no coverage</span>`:'')+
         (e.noeval?`<span class="noeval">not evaluated</span>`:'')).join('<br>');
       html+=`<div class="note" style="margin-top:8px">`+
-        `<span class="warn">+${extra.length}</span> more below consensus, from the `+
-        `low-frequency screen:<br>${list}`+
+        `<span class="warn">+${extra.length}</span> sub-consensus marker${extra.length>1?'s':''} detected in low-frequency screen:<br>${list}`+
         (extra.length>6?`<br>…and ${extra.length-6} more`:'')+
-        `<br><br>These come from LoFreq calls painted onto the reference, so they are `+
-        `present in the reads but NOT in this sample's consensus — a marker in the `+
-        `population rather than one the sample carries.`+
-        /* Its own sentence rather than folded into the paragraph above: that one
-           explains what the list IS, this one says which entries cannot be
-           trusted, and a reader has to be able to act on them separately. */
-        (nNo?`<br><br><span class="bad">${nNo} of these ${nNo>1?'sit':'sits'} on positions `+
-             `with NO reads in this sample.</span> The reference base stood in for data that `+
-             `is not there, so ${nNo>1?'those markers are':'that marker is'} the reference `+
-             `talking rather than the sample. Absence of a marker at such a position is not `+
-             `evidence of absence either.`:'')+
-        (nNe?`<br><br><span class="warn">${nNe} of these ${nNe>1?'rest':'rests'} on positions `+
-             `no caller evaluated.</span> There are reads there, but after overlapping mates `+
-             `are discounted and the quality floor applied, fewer than MIN_DEPTH=${runMinDepth} `+
-             `remain — so every caller skipped ${nNe>1?'those positions':'that position'} `+
-             `without reporting anything. The coverage track will still look healthy. `+
-             `${nNe>1?'They are':'It is'} unexamined rather than negative.`:'')+`</div>`;
+        `<br><br>These variants are present in reads but do not reach consensus frequency.`+
+        (nNo?`<br><br><span class="bad">${nNo} position${nNo>1?'s have':' has'} no read coverage.</span> Reference bases were used during screening.`:'')+
+        (nNe?`<br><br><span class="warn">${nNe} position${nNe>1?'s have':' has'} depth below MIN_DEPTH (${runMinDepth}).</span> Callers did not evaluate these positions.`:'')+`</div>`;
     }
   } else if(fmLowState==='nofile'){
-    html+=`<div class="note" style="margin-top:8px">a flumut_lowfreq directory exists but `+
-      `has no markers.tsv — the low-frequency screen did not finish</div>`;
+    html+=`<div class="note" style="margin-top:8px">Directory flumut_lowfreq exists but has no markers.tsv.</div>`;
   } else if(fmLowState==='norun'){
-    html+=`<div class="note" style="margin-top:8px">no low-frequency screen in this run. `+
-      `Enable <b>FLUMUT_LOWFREQ=TRUE</b> to also report markers present below consensus`+
-      `</div>`;
+    html+=`<div class="note" style="margin-top:8px">Low-frequency marker screen was not enabled in this run.</div>`;
   }
   return html;
 }
@@ -7222,22 +7467,17 @@ function fillSNPGenie(i){
   const el=document.getElementById('snpnote'); if(!el) return;
   if(snpState==='norun'){
     el.innerHTML='No SNPGenie results in this run. Enable <b>SNPGENIE=TRUE</b> in the '+
-      'Flumina config to get per-codon &pi;N and &pi;S.'; return; }
+      'Flumina config to calculate per-codon &pi;N and &pi;S.'; return; }
   if(snpState==='nofile'){
-    el.innerHTML='A <b>snpGenie_results</b> directory is present but has no '+
-      '<b>codon_results_summary.csv</b> — the analysis did not finish.'; return; }
-  if(snpState!=='ok'){ el.textContent='codon table unavailable'; return; }
+    el.innerHTML='Directory <b>snpGenie_results</b> is present but has no '+
+      '<b>codon_results_summary.csv</b>.'; return; }
+  if(snpState!=='ok'){ el.textContent='Codon table unavailable'; return; }
   const c=snpCells.get(snpKeyOf(i));
   if(!c){
-    el.innerHTML=`No diversity at this codon in this sample — SNPGenie found neither a `+
-      `synonymous nor a nonsynonymous difference here. That is the case for `+
-      `${(100*(1-snpStats.cells/snpStats.rows)).toFixed(1)}% of codons in this run.`;
+    el.innerHTML=`No nucleotide diversity detected at this codon in this sample (${(100*(1-snpStats.cells/snpStats.rows)).toFixed(1)}% of codons in this run have zero diversity).`;
     return; }
   const f=v=>v.toFixed(5);
   const excess = c.d>0 ? 'nonsynonymous' : c.d<0 ? 'synonymous' : 'neither';
-  /* The distinction that decides whether this number is a comparison at all.
-     99% of cells on the swine run have one term at exactly zero, meaning only
-     one kind of difference was seen — which is a category, not a magnitude. */
   const oneSided = (c.piN===0)!==(c.piS===0);
   el.outerHTML =
     `<dl class="dl" id="snpnote">
@@ -7246,14 +7486,10 @@ function fillSNPGenie(i){
        <dt>&pi;N − &pi;S</dt><dd class="${c.d>0?'warn':''}">${c.d>0?'+':''}${f(c.d)}</dd>
      </dl>`+
     `<div class="note">${
-      c.d===0 ? 'Equal nonsynonymous and synonymous diversity at this codon.'
+      c.d===0 ? 'Equal nonsynonymous (&pi;N) and synonymous (&pi;S) diversity at this codon.'
       : oneSided
-        ? `Only ${c.piS===0?'nonsynonymous':'synonymous'} diversity was observed here — `+
-          `&pi;${c.piS===0?'S':'N'} is zero, so this is not a comparison of two `+
-          `quantities but a record of which kind of difference occurred. `+
-          `One codon in one sample is an observation, not a test.`
-        : `Excess ${excess} diversity, with both terms non-zero — one of the few codons `+
-          `here where the two can actually be compared.`}</div>`;
+        ? `Only ${c.piS===0?'nonsynonymous':'synonymous'} diversity was observed at this codon (&pi;${c.piS===0?'S':'N'} = 0).`
+        : `Excess ${excess} diversity detected with non-zero values for both &pi;N and &pi;S.`}</div>`;
 }
 
 /* WFABC subsection. Four distinct outcomes, each said plainly — a blank space
@@ -7261,56 +7497,37 @@ function fillSNPGenie(i){
    under selection" from "this analysis was never run", which are opposite
    conclusions. */
 function wfabcSection(i){
-  const head='<div class="psec">selection · WFABC</div>';
+  const head='<div class="psec">Selection · WFABC</div>';
   const note=t=>head+`<div class="empty">${t}</div>`;
 
   if(wfabcState!=='ok'){
     const ts=looksTimeSeries();
     if(wfabcState==='nofile')
-      return note('A WFABC directory is present but holds neither '+
-                  '<b>wfabc_summary.txt</b> nor <b>FIT_results.csv</b> — the analysis '+
-                  'did not finish. Re-run it, or check its log.');
+      return note('A WFABC directory is present but has neither <b>wfabc_summary.txt</b> nor <b>FIT_results.csv</b>.');
     if(ts===false)
-      return note('WFABC is only available for <b>time-series data</b> — the same '+
-                  'individual sampled at two or more time points. This run\'s metadata '+
-                  'shows no repeat sampling.');
+      return note('WFABC requires <b>time-series data</b> with repeat sampling across two or more time points.');
     if(ts)
-      return note(`This run looks like a time series (<b>${esc(ts.individual)}</b> over `+
-                  `<b>${esc(ts.time)}</b>) but WFABC has not been run on it yet. `+
-                  `Enable it with <b>WFABC=TRUE</b> in the Flumina config.`);
-    return note('No WFABC results in this folder. It is only available for time-series '+
-                'data — load the metadata CSV and this will say which case applies.');
+      return note(`Time-series metadata detected (<b>${esc(ts.individual)}</b> over <b>${esc(ts.time)}</b>). Enable <b>WFABC=TRUE</b> in Flumina config.`);
+    return note('No WFABC results in this folder.');
   }
 
   if(!wfabcAnimalCol)
-    return note(`WFABC results are loaded (${wfabc.n} sites) but no metadata column `+
-                `matches its animal IDs, so they cannot be joined to samples. `+
-                `Load the metadata CSV that carries the animal identifier.`);
+    return note(`WFABC results loaded (${wfabc.n} sites), but metadata column for animal IDs is not assigned.`);
 
   const m=meta.get(names[V.row[i]])||{};
   const animal=String(m[wfabcAnimalCol]==null?'':m[wfabcAnimalCol]).trim();
   if(!animal)
-    return note(`This sample has no <b>${esc(wfabcAnimalCol)}</b> value, so it cannot be `+
-                `matched to a WFABC trajectory.`);
+    return note(`Sample has no value in metadata column <b>${esc(wfabcAnimalCol)}</b>.`);
 
   const r=wfabc.rows.get(`${animal}|${V.seg[i]}|${V.pos[i]}`);
   if(!r)
-    return note(`No trajectory for this position in animal <b>${esc(animal)}</b>. `+
-                `WFABC only fits sites seen at two or more time points, so this variant `+
-                `had no support — it was not tracked across the series.`);
+    return note(`No trajectory found for position in animal <b>${esc(animal)}</b>.`);
 
   const A=r.abc, F=r.fit;
   const fmt=(v,d)=>isFinite(v)?(+v).toFixed(d):'—';
   const ntp = A&&isFinite(A.n_tp) ? A.n_tp : (F&&isFinite(F.n_tp) ? F.n_tp : NaN);
   const grp = (A&&A.grp) || (F&&F.grp) || '';
 
-  /* The two verdicts have to be reported separately before they are combined,
-     because the interesting case is DISAGREEMENT. WFABC always returns a
-     coefficient — it is an estimate, not a test — so a large s with an interval
-     spanning zero is not a finding. FIT is the test, and where it says drift
-     while WFABC says s, the honest reading is drift wearing a selection
-     coefficient. On the swine run the two never agreed on a single site: 11
-     intervals excluded zero, none of those was FIT-significant. */
   const excl = A && isFinite(A.lo) && isFinite(A.hi) && (A.lo>0 || A.hi<0);
   const hasInterval = A && isFinite(A.lo) && isFinite(A.hi);
   const fitSig = F && isFinite(F.fdr) && F.fdr<0.05;
@@ -7318,39 +7535,25 @@ function wfabcSection(i){
 
   let cls='', title='', body='';
   if(F && fitSig && excl){
-    cls='warn'; title='Selection — both methods agree';
-    body=`FIT rejects drift (FDR ${fmt(F.fdr,3)}) and the ABC interval excludes zero `+
-         `(${fmt(A.lo,3)} to ${fmt(A.hi,3)}). The strongest case this run can make.`;
+    cls='warn'; title='Selection detected: methods agree';
+    body=`FIT rejects genetic drift (FDR ${fmt(F.fdr,3)}). ABC selection interval excludes zero (${fmt(A.lo,3)} to ${fmt(A.hi,3)}).`;
   } else if(F && !fitSig && excl){
-    cls='warn'; title='Drift wearing a selection coefficient';
-    body=`The ABC interval excludes zero (s = ${fmt(A.s,3)}, ${fmt(A.lo,3)} to ${fmt(A.hi,3)}), `+
-         `but FIT cannot separate this trajectory from drift (FDR ${fmt(F.fdr,3)}). `+
-         `WFABC always returns a coefficient; FIT is the test of whether one is needed.`;
+    cls='warn'; title='Consistent with drift (ABC estimate only)';
+    body=`ABC interval excludes zero (s = ${fmt(A.s,3)}, ${fmt(A.lo,3)} to ${fmt(A.hi,3)}), but FIT test does not reject drift (FDR ${fmt(F.fdr,3)}).`;
   } else if(F && fitSig && hasInterval && !excl){
-    cls='warn'; title='FIT rejects drift, ABC interval spans zero';
-    body=`FIT is significant (FDR ${fmt(F.fdr,3)}) while the coefficient remains `+
-         `compatible with zero (${fmt(A.lo,3)} to ${fmt(A.hi,3)}) — a change in the `+
-         `trajectory whose magnitude is not pinned down.`;
+    cls='warn'; title='Trajectory shift (magnitude unresolved)';
+    body=`FIT test is significant (FDR ${fmt(F.fdr,3)}), while ABC selection interval spans zero (${fmt(A.lo,3)} to ${fmt(A.hi,3)}).`;
   } else if(F){
-    title='Consistent with drift';
-    body=`Neither method separates this from drift: FIT FDR ${fmt(F.fdr,3)}`+
-         (hasInterval?`, ABC interval ${fmt(A.lo,3)} to ${fmt(A.hi,3)} spanning zero`:'')+`.`;
+    title='Consistent with genetic drift';
+    body=`Trajectory does not differ significantly from neutral drift (FIT FDR ${fmt(F.fdr,3)}${hasInterval?`, ABC interval ${fmt(A.lo,3)} to ${fmt(A.hi,3)}`:''}).`;
   } else if(!testable){
-    /* The common case, and the one most easily misread. Say why there is no
-       test rather than leaving a blank where a p-value belongs. */
-    title='Not testable for drift';
-    body=`FIT needs at least three time points — a t-test over the increments, so two `+
-         `points give one increment and no variance. This trajectory has `+
-         `${isFinite(ntp)?ntp:'fewer than 3'}. The ABC estimate below stands on its own, `+
-         `and absence of a FIT result here is not a negative result.`+
-         (wfabc.hasFit&&isFinite(wfabc.nFit)&&isFinite(wfabc.nAbc)
-           ? ` Across this run FIT covers ${wfabc.nFit.toLocaleString()} of `+
-             `${wfabc.nAbc.toLocaleString()} fitted trajectories.` : '');
+    title='Insufficient time points for drift test';
+    body=`FIT requires at least three time points. This trajectory contains ${isFinite(ntp)?ntp:'fewer than 3'} time points.`+
+      (wfabc.hasFit&&isFinite(wfabc.nFit)&&isFinite(wfabc.nAbc)
+        ? ` Across this run FIT covers ${wfabc.nFit.toLocaleString()} of ${wfabc.nAbc.toLocaleString()} fitted trajectories.` : '');
   } else {
     title='No drift test for this site';
-    body=`This trajectory has ${ntp} time points, enough for FIT, but no row in `+
-         `FIT_results.csv. Either that table predates this run or the site was dropped `+
-         `while computing it.`;
+    body='WFABC fitted a trajectory; no FIT output was published.';
   }
 
   return head+
@@ -7379,7 +7582,7 @@ function freqBar(f){
     return `<b style="${style}">${lab}</b>`;
   }).join('');
   const val=(f*100).toFixed(2)+'%';
-  return `<div class="psec">${freqLog?'log-scale allele frequency':'allele frequency'}</div>`+
+  return `<div class="psec">${freqLog?'Log-Scale Allele Frequency':'Allele Frequency'}</div>`+
     `<div class="fbar">`+
     `<div class="fbrow"><div class="fbtrack">${ticks}`+
       `<i style="width:${x.toFixed(2)}%;background:${FILL[bucket(f)]}"></i>`+
@@ -7759,43 +7962,31 @@ function renderIrma(el,row,col){
 
   let title, cls, body;
   if(c.st===IRMA_ST.uncovered||c.st===255){
-    title='IRMA placed nothing here'; cls='bad';
+    title='No IRMA coverage at this codon'; cls='bad';
     body = c.frame==='absent'
-      ? `The <b>${esc(c.product)}</b> segment is absent from this sample's IRMA assembly, `+
-        `so there is no consensus to read. This is not agreement with the reference — `+
-        `it is no statement at all.`
+      ? `The <b>${esc(c.product)}</b> segment is absent from this sample's IRMA assembly.`
       : c.frame==='aligned'
-        ? `This sample's contig is TRUNCATED and did not reach this codon. The frame was `+
-          `established by alignment, so the codons it does reach are correctly placed; `+
-          `this one simply has no contig under it.`
-        : `The pipeline did not state this codon. Either the segment is missing or the `+
-          `position map was written before this product existed.`;
+        ? `Contig is truncated and does not extend to this codon.`
+        : `No consensus sequence was assembled for this codon.`;
   } else if(c.st===IRMA_ST.ambiguous){
-    title='IRMA could not call a base'; cls='warn';
-    body=`IRMA wrote N in the contig here. It had reads, but it still could not resolve the `+
-         `base. This is a third answer — neither a change nor agreement with the reference.`;
+    title='Ambiguous base called by IRMA'; cls='warn';
+    body=`IRMA reported an ambiguous base (N) at this codon.`;
   } else if(chg){
-    title = c.st===IRMA_ST.change ? 'IRMA calls a change'
-          : c.st===IRMA_ST.change_thin ? 'IRMA calls a change, on thin coverage'
-          : 'IRMA calls a change, depth unknown';
+    title = c.st===IRMA_ST.change ? 'IRMA calls consensus change'
+          : c.st===IRMA_ST.change_thin ? 'IRMA calls consensus change (low depth)'
+          : 'IRMA calls consensus change (unknown depth)';
     cls = c.st===IRMA_ST.change ? 'warn' : 'bad';
     body = c.st===IRMA_ST.change
-      ? `At or above the run's depth floor, measured against IRMA's OWN coverage — not `+
-        `the BWA pileup. The BWA pileup is thinner at the segment ends, so the callers can `+
-        `be silent where IRMA is not.`
+      ? `Read depth meets or exceeds the minimum threshold in IRMA assembly coverage.`
       : c.st===IRMA_ST.change_thin
-        ? `Below the run's depth floor in IRMA's own coverage. Read it as a lead, not a `+
-          `result — the floor exists because low-depth consensus calls make false fixations.`
-        : `No IRMA coverage table was available, so the depth floor could not be applied. `+
-          `An unknown depth is not a passing one.`;
+        ? `Read depth is below the minimum threshold in IRMA assembly coverage.`
+        : `IRMA coverage table is unavailable.`;
   } else if(c.st===IRMA_ST.thin){
-    title='Matches the reference, on thin coverage'; cls='warn';
-    body=`IRMA agrees with the reference here, but below the run's depth floor in its own `+
-         `coverage. 18% of codons in this run are in this state, which is why they are not `+
-         `marked in the grid — the depth is reported here instead.`;
+    title='Matches reference (low depth)'; cls='warn';
+    body=`Residue matches reference sequence, but read depth is below the minimum threshold in IRMA coverage.`;
   } else {
-    title='IRMA agrees with the reference'; cls='good';
-    body=`At or above the depth floor in IRMA's own coverage.`;
+    title='Matches reference sequence'; cls='good';
+    body=`Read depth meets or exceeds the minimum threshold in IRMA coverage.`;
   }
 
   el.innerHTML =
@@ -7958,7 +8149,7 @@ async function renderVariant(el,i){
       if(md&&V.depth[i]<md) yours.push(`depth ${V.depth[i].toLocaleString()} < your ${md}`);
       if(mf&&V.freq[i]<mf) yours.push(`${(V.freq[i]*100).toFixed(2)}% < your ${(mf*100).toFixed(0)}%`);
       if(ma&&d.alt>=0&&d.alt<ma) yours.push(`${d.alt} alt reads < your ${ma}`);
-      return `<div class="psec">variant assessment</div>`+
+      return `<div class="psec">Variant Assessment</div>`+
         `<div class="verdict ${ASSESS_CLASS[d.verdict]}"><b>${ASSESS_LABEL[d.verdict]}</b>`+
         d.reasons.map(esc).join('<br>')+
         `</div>`+
@@ -7966,7 +8157,7 @@ async function renderVariant(el,i){
         (yours.length?`<div class="note" style="margin:-4px 0 8px">below your current `+
           `filters: ${esc(yours.join(' · '))}</div>`:'');
     })()+
-    `<div class="psec">variant summary</div>`+
+    `<div class="psec">Variant Summary</div>`+
     `<dl class="dl">
       <dt>frequency</dt><dd>${(V.freq[i]*100).toFixed(2)}%${
         isGenotypeAF(i)?' <span class="bad">⚠ genotype, not an allele fraction</span>':''}</dd>
@@ -8083,7 +8274,7 @@ async function renderVariant(el,i){
     (sameCodon>1?`<div id="codonres" class="verdict warn"><b>${sameCodon} calls in this codon</b>
       Each was translated against the reference on its own. Reading the codon
       off the reads…</div>`:'')+
-    `<div id="trust"><div class="empty">reading VCF…</div></div>`+
+    `<div id="trust"><div class="psec">Strand Balance</div><div class="empty">reading VCF…</div></div>`+
     flumutSection(i)+
     snpgenieSection(i)+
     wfabcSection(i);
@@ -8154,12 +8345,12 @@ async function renderVariant(el,i){
       why=`The VCF has ${vcf.size.toLocaleString()} calls but none at `+
           `<b>${esc(V.seg[i])}:${V.pos[i]}</b>. The amino-acid table and the VCF are `+
           `out of step — most likely the table was built from a different run.`;
-    t.innerHTML='<div class="psec">strand balance</div>'+
+    t.innerHTML='<div class="psec">Strand Balance</div>'+
       '<div class="verdict warn"><b>No strand detail</b>'+why+'</div>';
     return; }
   const dp4=(rec.info.DP4||'').split(',').map(Number);
   const sb=rec.info.SB!==undefined?+rec.info.SB:null;
-  let html='<div class="psec">strand balance</div><dl class="dl">';
+  let html='<div class="psec">Strand Balance</div><dl class="dl">';
   if(dp4.length===4){
     const [rf,rr,af,ar]=dp4, altTot=af+ar, refTot=rf+rr;
     const altFrac=altTot?af/altTot:0, refFrac=refTot?rf/refTot:0;
@@ -8178,7 +8369,7 @@ async function renderVariant(el,i){
             `${esc(dstr.strandMsg)}</dd>`;
     html+='</dl>';
     // The overall verdict — which weighs depth, supporting reads and frequency
-    // as well as this — is rendered above the variant summary, not here.
+    // as well as this — is rendered above the Variant Summary, not here.
   } else { html+='</dl><div class="empty">no DP4 field in this VCF record</div>'; }
   t.innerHTML=html;
 }
@@ -8257,8 +8448,8 @@ function renderSite(el,col){
     // filtered, there may be plenty and the filters are hiding it. Saying the
     // wrong one is how this panel misled in the first place.
     html+=unfiltered
-      ? '<div class="empty">No calls at this position in the table.</div>'
-      : '<div class="empty">No calls at this position under the current filters.</div>';
+      ? '<div class="empty">No variant calls recorded at this position.</div>'
+      : '<div class="empty">No variant calls match current filter settings.</div>';
   }
   else{
     const nLow=rows.filter(i=>V.depth[i]<100).length;
@@ -8994,15 +9185,285 @@ document.getElementById('export').onclick=doExport;
 document.getElementById('runnotes-toggle').onclick=()=>{
   const b=document.getElementById('runnotes-body');
   b.hidden=!b.hidden;
+  document.getElementById('runnotes-toggle').classList.toggle('on', !b.hidden);
 };
-// Escape closes the export dialog. The app had no keyboard handling at all
-// before this, so it is scoped to the dialog rather than made a global map.
-window.addEventListener('keydown',e=>{
-  if(e.key!=='Escape') return;
-  // The dialog first — it is modal, so it owns Escape while it is up.
-  const dlg=document.getElementById('exportdlg');
-  if(dlg){ closeExportDialog(); return; }
-  if(viewMode==='reads'&&readsSample!==null) setReadsSample(null);
+
+// UI Action button handlers
+initAccordions();
+const pAll = document.getElementById('prod-all'); if(pAll) pAll.onclick = selectAllProducts;
+const pPri = document.getElementById('prod-pri'); if(pPri) pPri.onclick = selectPrimaryProducts;
+const pNon = document.getElementById('prod-none'); if(pNon) pNon.onclick = selectNoneProducts;
+const sBtn = document.getElementById('shortcuts-btn'); if(sBtn) sBtn.onclick = openShortcutsModal;
+const sCls = document.getElementById('shortcuts-close'); if(sCls) sCls.onclick = closeShortcutsModal;
+const sDlg = document.getElementById('shortcutsdlg'); if(sDlg) sDlg.onclick = e => { if(e.target === sDlg) closeShortcutsModal(); };
+const qInp = document.getElementById('quicksearch');
+if(qInp){
+  qInp.addEventListener('keydown', e => {
+    if(e.key === 'Enter'){
+      if(jumpToQuery(qInp.value)) qInp.blur();
+    }
+  });
+}
+
+/* ---- UI Enhancements: Accordions, Shortcuts, Jump Search, Filter Helpers ---- */
+
+function initAccordions(){
+  document.querySelectorAll('.sec-head').forEach(h => {
+    const sec = h.closest('.sec');
+    if(!sec) return;
+    const secId = h.dataset.sec;
+    if(!secId) return;
+    const saved = lsGet('sec_collapsed_' + secId);
+    if(saved === '1') sec.classList.add('collapsed');
+    h.addEventListener('click', e => {
+      if(e.target.closest('.mini-btn') || e.target.closest('select') || e.target.closest('input')) return;
+      sec.classList.toggle('collapsed');
+      lsSet('sec_collapsed_' + secId, sec.classList.contains('collapsed') ? '1' : '0');
+    });
+  });
+}
+
+function selectAllProducts(){
+  hidden.clear();
+  applyFilters();
+  schedule();
+}
+
+function selectPrimaryProducts(){
+  hidden.clear();
+  products.filter(p => !p.primary).forEach(p => hidden.add(p.product));
+  applyFilters();
+  schedule();
+}
+
+function selectNoneProducts(){
+  hidden.clear();
+  products.forEach(p => hidden.add(p.product));
+  applyFilters();
+  schedule();
+}
+
+function getActiveFilterCount(){
+  let count = 0;
+  const nonsyn = document.getElementById('fnonsyn');
+  if(nonsyn && !nonsyn.checked) count++;
+  const fdepth = document.getElementById('fdepth');
+  if(fdepth && Number(fdepth.value) !== 100) count++;
+  const falt = document.getElementById('falt');
+  if(falt && Number(falt.value) > 0) count++;
+  const ffreq = document.getElementById('ffreq');
+  if(ffreq && Number(ffreq.value) > 0) count++;
+  const fassess = document.getElementById('fassess');
+  if(fassess && fassess.value !== 'all') count++;
+  const fsites = document.getElementById('fsites');
+  if(fsites && fsites.value !== 'all') count++;
+  const flofreq = document.getElementById('flofreq'), fivar = document.getElementById('fivar'), fgatk = document.getElementById('fgatk');
+  if(flofreq && !flofreq.checked) count++;
+  if(fivar && !fivar.checked) count++;
+  if(fgatk && !fgatk.checked) count++;
+  if(hidden && hidden.size > 0) count++;
+  return count;
+}
+
+function updateFilterBadge(){
+  const badge = document.getElementById('filterbadge');
+  if(!badge) return;
+  const count = getActiveFilterCount();
+  if(count > 0 && viewMode !== 'consensus'){
+    badge.style.display = 'inline-flex';
+    badge.innerHTML = `${count} active · <button class="pill-btn" id="filter-reset-btn" title="Reset filters">reset</button>`;
+    const rbtn = document.getElementById('filter-reset-btn');
+    if(rbtn) rbtn.onclick = (e) => { e.stopPropagation(); resetFilters(); };
+  } else {
+    badge.style.display = 'none';
+  }
+}
+
+function resetFilters(){
+  const def = {
+    depth: 100,
+    freq: 0,
+    alt: 0,
+    assess: 'all',
+    nonsyn: true,
+    sites: 'all',
+    lofreq: true,
+    ivar: true,
+    gatk: true,
+    hidden: [],
+    hideEmpty: false,
+    hideFail: false,
+    qc: {minCalls: 1, minMedDepth: 200, maxLowFrac: 0.25},
+    sort: []
+  };
+  applyState(def);
+  activePreset = 'Default';
+  renderPresetList();
+  savePresetState();
+  updateFilterBadge();
+  if(ready){
+    applyFilters();
+    renderDetail();
+    schedule();
+  }
+  setChip('Filters and state reset to default');
+}
+
+function jumpToQuery(q){
+  q = (q || '').trim();
+  if(!q || !ready || !products || !products.length) return false;
+  let prodName = null, codon = null;
+  const mGeneCodon = q.match(/^([A-Za-z0-9_-]+)[\s:,-]+(\d+)$/);
+  const mMutation = q.match(/^(?:([A-Za-z0-9_-]+)[\s:,-]*)?([A-Za-z*])(\d+)([A-Za-z*])?$/i);
+  const mBareNum = q.match(/^(\d+)$/);
+  const mBareGene = q.match(/^([A-Za-z0-9_-]+)$/);
+
+  if(mGeneCodon){
+    prodName = mGeneCodon[1].toUpperCase();
+    codon = parseInt(mGeneCodon[2], 10);
+  } else if(mMutation && (mMutation[1] || mMutation[4])){
+    if(mMutation[1]) prodName = mMutation[1].toUpperCase();
+    codon = parseInt(mMutation[3], 10);
+  } else if(mBareNum){
+    codon = parseInt(mBareNum[1], 10);
+  } else if(mBareGene){
+    prodName = mBareGene[1].toUpperCase();
+    codon = 1;
+  }
+
+  let targetProd = null;
+  if(prodName){
+    const norm = prodName.replace(/^A_/, '');
+    for(const p of products){
+      const pName = (p.product || '').toUpperCase(), pSeg = (p.segment || '').toUpperCase();
+      if(pName === norm || pSeg === norm || shortLocus(pName) === norm || shortLocus(pSeg) === norm){
+        targetProd = p; break;
+      }
+    }
+    if(!targetProd){
+      for(const p of products){
+        const pName = (p.product || '').toUpperCase(), pSeg = (p.segment || '').toUpperCase();
+        if(pName.startsWith(norm) || pSeg.startsWith(norm)){
+          targetProd = p; break;
+        }
+      }
+    }
+  }
+  if(!targetProd && !prodName && codon !== null){
+    targetProd = products.find(p => p.product === 'HA') || products[0];
+  }
+  if(!targetProd) return false;
+
+  const cPos = Math.max(1, Math.min(targetProd.aa, codon || 1));
+  const gc = targetProd.off + (cPos - 1);
+
+  // If product is hidden, unhide it so the user sees the codon
+  if(hidden.has(targetProd.product)){
+    hidden.delete(targetProd.product);
+    applyFilters();
+  }
+
+  // Center column on screen
+  const bw = bodyW();
+  scrollCol = Math.max(0, Math.min(NC - (bw / cw), gc - Math.floor((bw / cw) / 2)));
+  clampScroll();
+
+  // Select and highlight column
+  selIrma = null;
+  selVariant = null;
+  selCol = gc;
+  selNt = null;
+
+  renderDetail();
+  schedule();
+  setChip(`Jumped to ${targetProd.product} codon ${cPos}`);
+  return true;
+}
+
+function openShortcutsModal(){
+  const dlg = document.getElementById('shortcutsdlg');
+  if(dlg) dlg.style.display = 'flex';
+}
+function closeShortcutsModal(){
+  const dlg = document.getElementById('shortcutsdlg');
+  if(dlg) dlg.style.display = 'none';
+}
+
+// Global keyboard shortcuts and navigation
+window.addEventListener('keydown', e => {
+  if(e.key === 'Escape'){
+    closeExportDialog();
+    closeShortcutsModal();
+    const qs = document.getElementById('quicksearch');
+    if(qs && document.activeElement === qs) qs.blur();
+    if(viewMode === 'reads' && readsSample !== null) setReadsSample(null);
+    return;
+  }
+  const tag = (e.target && e.target.tagName) || '';
+  if(tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT'){
+    if(e.key === 'Enter' && e.target.id === 'quicksearch'){
+      if(jumpToQuery(e.target.value)) e.target.blur();
+    }
+    return;
+  }
+  if(e.key === '/' && !e.ctrlKey && !e.metaKey){
+    e.preventDefault();
+    const qs = document.getElementById('quicksearch');
+    if(qs){ qs.focus(); qs.select(); }
+    return;
+  }
+  if(e.key === '?' || (e.shiftKey && e.key === '/')){
+    e.preventDefault();
+    const dlg = document.getElementById('shortcutsdlg');
+    if(dlg && dlg.style.display === 'flex') closeShortcutsModal();
+    else openShortcutsModal();
+    return;
+  }
+  if(e.key === '+' || e.key === '='){
+    e.preventDefault();
+    cw = Math.min(maxCW(), cw * 1.4); userZoomed = true;
+    if(squareCells){ if(viewMode === 'reads') { readRowH = squareReadRowH(); syncReadControls(); }
+                     else rowPx = squareRowPx(); }
+    schedule();
+    return;
+  }
+  if(e.key === '-' || e.key === '_'){
+    e.preventDefault();
+    cw = Math.max(0.04, cw / 1.4); userZoomed = true;
+    if(squareCells){ if(viewMode === 'reads') { readRowH = squareReadRowH(); syncReadControls(); }
+                     else rowPx = squareRowPx(); }
+    schedule();
+    return;
+  }
+  if(e.key === '0' || e.key === 'f' || e.key === 'F'){
+    e.preventDefault();
+    fit();
+    return;
+  }
+  if(e.key === 't' || e.key === 'T'){
+    e.preventDefault();
+    themeName = themeName === 'dark' ? 'light' : 'dark';
+    applyTheme();
+    return;
+  }
+  if(e.key === '['){
+    e.preventDefault();
+    const s = document.getElementById('side');
+    if(s){ s.classList.toggle('collapsed'); resize(); }
+    return;
+  }
+  if(e.key === ']'){
+    e.preventDefault();
+    const d = document.getElementById('detail');
+    if(d){ d.classList.toggle('collapsed'); resize(); }
+    return;
+  }
+  if(e.key === '1'){ setViewer('aminoacids'); return; }
+  if(e.key === '2'){ setViewer('nucleotides'); return; }
+  if(e.key === '3'){ setViewer('selection'); return; }
+  if(e.key === 'q' || e.key === 'Q'){ setVariantView('lowfreq'); return; }
+  if(e.key === 'w' || e.key === 'W'){ setVariantView('consensus'); return; }
+  if(e.key === 'e' || e.key === 'E'){ setVariantView('reads'); return; }
 });
 window.addEventListener('resize',resize);
 /* A window resize is not the only thing that changes the canvas's box: the
@@ -9239,7 +9700,7 @@ function exportProvenance(){
   L.push(`callers,${['flofreq','fivar','fgatk'].filter(id=>document.getElementById(id).checked)
                    .map(id=>({flofreq:'LoFreq',fivar:'iVar',fgatk:'GATK4'})[id]).join(' ')||'none'}`);
   if(hidden.size) L.push(`hidden_products,${[...hidden].join(' ')}`);
-  L.push(`note,thresholds above are the VIEW filters; the variant assessment uses fixed cut-offs`);
+  L.push(`note,thresholds above are the VIEW filters; the Variant Assessment uses fixed cut-offs`);
   return L;
 }
 
@@ -9599,9 +10060,13 @@ async function tauriOpen(){
   if(dir) await tauriBootstrap(dir);
 }
 if(TAURI){
-  // Take over the button; the browser's directory input does not exist here.
+  // Take over the button; remove file input so native folder dialog opens cleanly
   const b=document.getElementById('pick');
-  if(b) b.onclick=tauriOpen;   // label is already right; only the handler changes
+  if(b){
+    const inp = b.querySelector('input');
+    if(inp) inp.remove();
+    b.onclick = (e) => { e.preventDefault(); tauriOpen(); };
+  }
   window.__TAURI__.core.invoke('last_run')
     .then(p => { if(p) return tauriBootstrap(p); })
     .catch(e => console.error(e));

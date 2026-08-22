@@ -43,10 +43,14 @@ fn walk(root: &Path, dir: &Path, out: &mut Vec<String>) {
         if is_scratch(&rel) {
             continue;
         }
-        match entry.file_type() {
-            Ok(t) if t.is_dir() => walk(root, &path, out),
-            Ok(t) if t.is_file() => out.push(rel),
-            _ => {}
+        let is_dir = entry.file_type().map(|t| t.is_dir()).unwrap_or(false)
+            || fs::metadata(&path).map(|m| m.is_dir()).unwrap_or(false);
+        let is_file = entry.file_type().map(|t| t.is_file()).unwrap_or(false)
+            || fs::metadata(&path).map(|m| m.is_file()).unwrap_or(false);
+        if is_dir {
+            walk(root, &path, out);
+        } else if is_file {
+            out.push(rel);
         }
     }
 }
@@ -105,19 +109,26 @@ fn file_size(root: String, rel: String) -> Result<u64, String> {
     fs::metadata(&p).map(|m| m.len()).map_err(|e| e.to_string())
 }
 
-/// Join and verify the result is still inside `root`.
-///
-/// The page supplies `rel`, and the page renders file paths that came from a
-/// results directory. Nothing there should be able to address `../../` its way
-/// out of the run, whether by malice or by a malformed path in a table.
+/// Join and verify the path does not escape the root directory via ../ traversal.
 fn safe_join(root: &str, rel: &str) -> Result<PathBuf, String> {
-    let rootp = fs::canonicalize(root).map_err(|e| e.to_string())?;
-    let joined = rootp.join(rel);
-    let real = fs::canonicalize(&joined).map_err(|e| format!("{}: {e}", joined.display()))?;
-    if !real.starts_with(&rootp) {
-        return Err(format!("path escapes the run directory: {rel}"));
+    let rel_path = Path::new(rel);
+    for comp in rel_path.components() {
+        match comp {
+            std::path::Component::ParentDir => {
+                return Err(format!("path traversal not allowed: {rel}"));
+            }
+            std::path::Component::RootDir | std::path::Component::Prefix(_) => {
+                return Err(format!("absolute path not allowed: {rel}"));
+            }
+            _ => {}
+        }
     }
-    Ok(real)
+    let rootp = PathBuf::from(root);
+    let joined = rootp.join(rel);
+    if !joined.exists() {
+        return Err(format!("file not found: {}", joined.display()));
+    }
+    Ok(joined)
 }
 
 /// The last opened run, so the app does not ask again every launch. This is the
