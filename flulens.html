@@ -968,7 +968,7 @@ the changed base's colour.</div>
         <input type="range" id="qcalls" min="0" max="200" step="5" value="1">
         <span class="val" id="vqcalls">1</span></div>
       <div class="fld"><span>median depth</span>
-        <input type="range" id="qdepth" min="0" max="2000" step="50" value="200">
+        <input type="range" id="qdepth" min="0" max="2000" step="10" value="200">
         <span class="val" id="vqdepth">200</span></div>
       <div class="fld"><span>max low-depth</span>
         <input type="range" id="qlow" min="0" max="100" step="5" value="25">
@@ -2095,8 +2095,8 @@ function parseAA(text, gtfLens){
   stats={raw, placed:n, multi, hasProduct, outOfOrf,
          lowdepth:0, fix:0, fixLow:0};
   for(let i=0;i<n;i++){
-    if(V.depth[i]<100) stats.lowdepth++;
-    if(V.freq[i]>0.9){ stats.fix++; if(V.depth[i]<100) stats.fixLow++; }
+    if(V.depth[i]<AS_MIN_DEPTH) stats.lowdepth++;
+    if(V.freq[i]>0.9){ stats.fix++; if(V.depth[i]<AS_MIN_DEPTH) stats.fixLow++; }
   }
 }
 
@@ -2661,7 +2661,7 @@ async function loadDepth(sample){
    depth line, which gates on runMinDepth!==null, stays quiet rather than drawing
    a floor the run never declared. The assessment always has a floor: the AS_*
    defaults. */
-let runMinDepth=null, runThreshTried=false;
+let runMinDepth=null, runMinAlt=null, runMinFreq=null, runThreshTried=false, runStrandBias=true, runBaseline=null;
 async function loadRunThresholds(){
   if(runThreshTried) return runMinDepth;
   runThreshTried=true;
@@ -2674,8 +2674,12 @@ async function loadRunThresholds(){
     const fr=num(/^\s*(?:MIN_FREQ|MIN_ALLELE_FREQUENCY)\s*=\s*"?(\d*\.?\d+)"?/m);
     const a =num(/^\s*MIN_ALT\s*=\s*"?(\d+)"?/m);
     if(d !==null){ runMinDepth=d; AS_MIN_DEPTH=d; }
-    if(fr!==null) AS_MIN_FREQ=fr;
-    if(a !==null) AS_MIN_ALT=a;
+    if(fr!==null){ runMinFreq=fr; AS_MIN_FREQ=fr; }
+    if(a !==null){ runMinAlt=a; AS_MIN_ALT=a; }
+    // FluPore writes MIN_FREQ; Flumina writes MIN_ALLELE_FREQUENCY. Nanopore
+    // reads have inherent strand bias from ligation prep, so the strand-skew
+    // artefact detector is disabled for ONT runs.
+    runStrandBias = !/^\s*MIN_FREQ\s*=/m.test(txt);
   }catch(e){ /* unreadable is the same as absent */ }
   return runMinDepth;
 }
@@ -3192,7 +3196,8 @@ async function loadRun(){
     // a stale MIN_DEPTH would flag the new run's markers against the old run's
     // threshold, which is worse than not flagging them at all. The assessment
     // floors reset to their defaults too, or run B inherits run A's config.
-    visDepthCache=new Map(); runMinDepth=null; runThreshTried=false;
+    visDepthCache=new Map(); runMinDepth=null; runMinAlt=null; runMinFreq=null;
+    runThreshTried=false; runStrandBias=true; runBaseline=null;
     AS_MIN_DEPTH=AS_DEF_DEPTH; AS_MIN_FREQ=AS_DEF_FREQ; AS_MIN_ALT=AS_DEF_ALT;
     /* The IRMA grids are sized NT*NC and keyed by this run's row order, so
        carrying them into a second run is not merely stale — it indexes the new
@@ -3216,11 +3221,30 @@ async function loadRun(){
       document.getElementById('fdepth').value=runMinDepth;
       document.getElementById('vdepth').textContent=runMinDepth;
     }
+    if(runMinAlt!==null){
+      document.getElementById('falt').value=runMinAlt;
+      document.getElementById('valt').textContent=runMinAlt;
+      minAlt=runMinAlt;
+    }
+    if(runMinFreq!==null){
+      const pct=Math.round(runMinFreq*100);
+      document.getElementById('ffreq').value=pct;
+      document.getElementById('vfreq').textContent=pct+'%';
+    }
+    if(runMinDepth!==null){
+      qcRules.minMedDepth=runMinDepth;
+      document.getElementById('qdepth').value=runMinDepth;
+      document.getElementById('vqdepth').textContent=runMinDepth;
+    }
+    hideEmpty=false; document.getElementById('hideempty').checked=false;
+    hideFail=false;  document.getElementById('hidefail').checked=false;
+    runBaseline=currentState();
     applyFilters(); ready=true; rowPx=0; scrollRow=0;
     resize(); fit();
     setChip(`${NT} samples × ${NC.toLocaleString()} codons · ${products.length} products · `+
       `${stats.placed.toLocaleString()} calls · ${Math.round(performance.now()-t0)}ms`);
     renderNotes(); renderDetail();
+    if(minAlt>0) ensureAssessments().then(()=>{ applyFilters(); schedule(); });
   }catch(e){
     fnd.innerHTML=`<span class="bad">${e.message}</span>`;
     setChip('failed to read run');
@@ -3246,9 +3270,9 @@ function renderNotes(){
     L.push(`aa annotation is wrong, not missing`);
   }
   L.push(`\n${stats.multi} multi-variant codons`);
-  L.push(`${stats.lowdepth} calls below depth 100`);
+  L.push(`${stats.lowdepth} calls below depth ${AS_MIN_DEPTH}`);
   L.push(`${stats.fixLow} of ${stats.fix} calls >90% are`);
-  L.push(`  below depth 100`);
+  L.push(`  below depth ${AS_MIN_DEPTH}`);
   document.getElementById('notes').innerHTML=L.join('\n');
 }
 
@@ -3334,7 +3358,7 @@ function computeQC(){
   for(let sm=0;sm<NT;sm++){
     const d=depths[sm]; d.sort((a,b)=>a-b);
     const med=d.length?d[d.length>>1]:0;
-    const low=d.length?d.filter(x=>x<100).length/d.length:1;
+    const low=d.length?d.filter(x=>x<AS_MIN_DEPTH).length/d.length:1;
     qcStat[sm]={calls:d.length, med, low, prods:0};
     qcAuto[sm]=(d.length>=qcRules.minCalls && med>=qcRules.minMedDepth
                 && low<=qcRules.maxLowFrac)?1:0;
@@ -5137,15 +5161,18 @@ function assessCore(i,out){
   out.alt=at;
   out.altFrac=at?af/at:0; out.refFrac=rt?rf/rt:0;
   out.skew=Math.abs(out.altFrac-out.refFrac);
-  if(at<AS_STRAND_MIN_ALT) out.strand=STRAND_FEW;
+  if(!runStrandBias){
+    out.strand=STRAND_NONE;
+  } else if(at<AS_STRAND_MIN_ALT) out.strand=STRAND_FEW;
   else if(out.skew>AS_SKEW_BAD||out.altFrac===0||out.altFrac===1) out.strand=STRAND_BAD;
   else if(out.skew>AS_SKEW_WARN) out.strand=STRAND_WARN;
   else out.strand=STRAND_GOOD;
 
-  if(out.strand===STRAND_BAD){ out.verdict=ASSESS.ARTEFACT; return out; }
-  out.verdict = (at<AS_MIN_ALT || V.depth[i]<AS_MIN_DEPTH ||
-                 V.freq[i]<AS_MIN_FREQ || out.strand===STRAND_WARN ||
-                 out.strand===STRAND_FEW)
+  if(runStrandBias && out.strand===STRAND_BAD){ out.verdict=ASSESS.ARTEFACT; return out; }
+  if(at<AS_MIN_ALT){ out.verdict=ASSESS.ARTEFACT; return out; }
+  out.verdict = (V.depth[i]<AS_MIN_DEPTH ||
+                 V.freq[i]<AS_MIN_FREQ ||
+                 (runStrandBias && (out.strand===STRAND_WARN || out.strand===STRAND_FEW)))
     ? ASSESS.CAUTION : ASSESS.REAL;
   return out;
 }
@@ -5154,6 +5181,10 @@ function assessDetail(i){
   const c=assessCore(i,{});
   const out={...c, reasons:[], strandMsg:''};
   if(c.strand===STRAND_NONE){
+    if(!runStrandBias){
+      // ONT: strand bias is not an artefact signal, so it is skipped entirely.
+      // The alt count still feeds the depth/freq/alt verdict below.
+    } else {
     const flt=gatkFilterOf(i);
     // Name the source strandRecOf actually consults: iVar rows read iVar's TSV,
     // everything else the LoFreq VCF. Saying "no LoFreq record" on an iVar-only
@@ -5172,6 +5203,19 @@ function assessDetail(i){
     else if(flt==='PASS')
       out.reasons.push('GATK4 passed its own filters here');
     return out;
+    } /* end Illumina strand-none branch */
+  }
+  if(!runStrandBias){
+    out.strandMsg='strand bias not assessed (ONT)';
+    if(c.alt>=0 && c.alt<AS_MIN_ALT)
+      out.reasons.push(`${c.alt} supporting read${c.alt===1?'':'s'} is below the min_alt floor of ${AS_MIN_ALT}`);
+    if(V.depth[i]<AS_MIN_DEPTH)
+      out.reasons.push(`depth ${V.depth[i].toLocaleString()} is below ${AS_MIN_DEPTH} — low template input makes false fixations`);
+    if(V.freq[i]<AS_MIN_FREQ)
+      out.reasons.push(`${(V.freq[i]*100).toFixed(2)}% is below the ${+(AS_MIN_FREQ*100).toFixed(3)}% caller floor`);
+    if(c.verdict===ASSESS.REAL)
+      out.reasons.push('adequate depth and support');
+    return out;
   }
   out.strandMsg =
     c.strand===STRAND_FEW ? `only ${c.alt} alt read${c.alt===1?'':'s'} — too few to judge`
@@ -5180,8 +5224,11 @@ function assessDetail(i){
   : 'balanced, in line with the reference';
 
   if(c.verdict===ASSESS.ARTEFACT){
-    out.reasons.push(`alt reads ${(c.altFrac*100).toFixed(0)}% forward against the `+
-      `reference allele's ${(c.refFrac*100).toFixed(0)}% — a typical artefact pattern`);
+    if(c.alt<AS_MIN_ALT)
+      out.reasons.push(`${c.alt} supporting read${c.alt===1?'':'s'} is below the min_alt floor of ${AS_MIN_ALT}`);
+    else
+      out.reasons.push(`alt reads ${(c.altFrac*100).toFixed(0)}% forward against the `+
+        `reference allele's ${(c.refFrac*100).toFixed(0)}% — a typical artefact pattern`);
     return out;
   }
   if(c.strand===STRAND_FEW)
@@ -5241,7 +5288,8 @@ function assessNote(){
          `${assessStats.caution.toLocaleString()} caution · `+
          `${assessStats.artefact.toLocaleString()} artefact`+
          (assessStats.unknown?` · ${assessStats.unknown} unassessable`:'')+
-         ` — the run's floors, not the sliders above`;
+         ` — the run's floors, not the sliders above`+
+         (runStrandBias?'':' (strand bias skipped — ONT)');
 }
 const isGenotypeAF=i=>afSource&&afSource[i]===2;
 
@@ -8452,11 +8500,11 @@ function renderSite(el,col){
       : '<div class="empty">No variant calls match current filter settings.</div>';
   }
   else{
-    const nLow=rows.filter(i=>V.depth[i]<100).length;
+    const nLow=rows.filter(i=>V.depth[i]<AS_MIN_DEPTH).length;
     const mean=rows.reduce((a,i)=>a+V.freq[i],0)/rows.length;
     html+=`<dl class="dl"><dt>mean freq</dt><dd>${(mean*100).toFixed(2)}%</dd>`+
       `<dt>max freq</dt><dd>${(V.freq[rows[0]]*100).toFixed(2)}%</dd>`+
-      `<dt>below depth 100</dt><dd class="${nLow?'bad':''}">${nLow}</dd></dl>`;
+      `<dt>below depth ${AS_MIN_DEPTH}</dt><dd class="${nLow?'bad':''}">${nLow}</dd></dl>`;
     // The nucleotide change is the headline in this view, so it gets its own
     // column rather than being inferred from the codon in the variant panel.
     html+='<table class="site"><tr><th>sample</th>'+
@@ -9152,6 +9200,7 @@ document.getElementById('cthin').onchange=e=>{ markThin=e.target.checked; schedu
    columns, the zoom, the read row height — and none of it is a finding. The
    filters, the QC overrides and the theme are decisions, so they stay. */
 document.getElementById('layout-reset').onclick=()=>{
+  if(runBaseline) applyState(runBaseline);
   NAMES_W=180; metaColW.clear();
   rowPx=0; userZoomed=false;
   scrollCol=0; scrollRow=0; readScroll=0;
