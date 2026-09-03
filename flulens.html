@@ -1948,7 +1948,11 @@ function parseAA(text, gtfLens){
        This app already reads it from gatk4-filtered-snps.vcf per sample; the
        column is the fallback for a run opened without its VCFs, which is the
        common case for a results tree that has been moved or trimmed. */
-    gatkFilter:ix('gatk_filter')};
+    gatkFilter:ix('gatk_filter'),
+    /* The verdict, stated by convertVCFtoTable.R (2026-09), like af_type/
+       allele_fraction. assessment is the label; alt_reads is the DP4 support count.
+       computeAssessments reads them when present, else falls back to the VCFs. */
+    assessCol:ix('assessment'), altReadsCol:ix('alt_reads')};
   if(C.sample<0||C.locus<0||C.aapos<0||C.freq<0)
     throw new Error('not an all_sample_amino_acids.txt');
 
@@ -1963,7 +1967,8 @@ function parseAA(text, gtfLens){
        is assumed to have come from the METADATA csv, so a new pipeline column
        silently becomes a sortable per-sample field holding the first row's
        value — wrong, and wrong in a way that looks like a working feature. */
-    'variant_id','af_type','allele_fraction','ivar_pass','af_conflict','gatk_filter']);
+    'variant_id','af_type','allele_fraction','ivar_pass','af_conflict','gatk_filter',
+    'alt_reads','strand_class','assessment']);
   metaCols=head.filter(h=>h&&!KNOWN.has(h));
   // Reset per run: these columns arrived with the table, not from a file the
   // user chose, and carrying a previous run's filename over would be a lie.
@@ -2016,7 +2021,10 @@ function parseAA(text, gtfLens){
   const sampleIx=new Map(); names=[];
   const A={row:[],col:[],freq:[],depth:[],qual:[],alt:[],ref:[],nonsyn:[],
            method:[],pos:[],aapos:[],prod:[],refnt:[],altnt:[],refcod:[],altcod:[],seg:[],
-           afType:[],afrac:[],ivarPass:[],afConf:[],gatkFilter:[]};
+           afType:[],afrac:[],ivarPass:[],afConf:[],gatkFilter:[],assessStated:[],altStated:[]};
+  // Label -> the ASSESS code this app uses, for the pipeline-stated verdict column.
+  const ASSESS_CODE={'Looks real':ASSESS.REAL,'Treat with caution':ASSESS.CAUTION,
+                     'Likely artefact':ASSESS.ARTEFACT,'Cannot assess':ASSESS.UNKNOWN};
   /* `+''` is 0, not NaN. A missing allele_fraction parsed with a bare `+` would
      become a 0% call that passes the min-freq filter and paints as absent, so
      blank and R's "NA" both have to be turned into NaN explicitly. */
@@ -2053,6 +2061,9 @@ function parseAA(text, gtfLens){
        semicolon list of failed tests. Normalising it to '' at read keeps the
        "no verdict" case one thing rather than two. */
     A.gatkFilter.push(C.gatkFilter>=0?(f[C.gatkFilter]==='NA'?'':f[C.gatkFilter]):'');
+    // 255 = no stated verdict for this row; -1 = no stated alt_reads.
+    A.assessStated.push(C.assessCol>=0?(ASSESS_CODE[f[C.assessCol]]??255):255);
+    A.altStated.push(C.altReadsCol>=0&&f[C.altReadsCol]!==''&&f[C.altReadsCol]!=='NA'?(+f[C.altReadsCol]):-1);
   }
   const n=A.row.length;
   V={n, row:Int32Array.from(A.row), col:Int32Array.from(A.col),
@@ -2065,10 +2076,13 @@ function parseAA(text, gtfLens){
      afType:Uint8Array.from(A.afType), afrac:Float32Array.from(A.afrac),
      ivarPass:A.ivarPass, afConf:Float32Array.from(A.afConf),
      gatkFilter:A.gatkFilter,
+     assessStated:Uint8Array.from(A.assessStated), altStated:Int32Array.from(A.altStated),
      /* Both columns, not either. af_type alone would mark every GATK4 row a
         genotype with no fraction to borrow, losing exactly the reconciliation
         the columns exist to provide — worse than not reading them at all. */
-     statedAF: C.afType>=0 && C.afrac>=0};
+     statedAF: C.afType>=0 && C.afrac>=0,
+     // The pipeline stated the verdict, so computeAssessments reads it (see there).
+     statedAssess: C.assessCol>=0};
   NT=names.length;
 
   // (Details of an unpublished run were removed here.)
@@ -5148,7 +5162,11 @@ function vcfRecOf(i){
    every call in the table. The reason strings are built for ONE row, when a
    panel opens. */
 const _core={verdict:0,alt:-1,skew:NaN,altFrac:NaN,refFrac:NaN,strand:0};
-const STRAND_NONE=0, STRAND_GOOD=1, STRAND_WARN=2, STRAND_BAD=3, STRAND_FEW=4;
+/* STRAND_REFEW: too few reference reads to form a strand ratio (a fixed call), so
+   the skew test is skipped. The mirror of STRAND_FEW on the alt side. It is not an
+   artefact signal; the all-one-strand alt signal is still caught as STRAND_BAD
+   first. Flumina uses the same rule and states the verdict in the table. */
+const STRAND_NONE=0, STRAND_GOOD=1, STRAND_WARN=2, STRAND_BAD=3, STRAND_FEW=4, STRAND_REFEW=5;
 function assessCore(i,out){
   out=out||_core;
   out.verdict=ASSESS.UNKNOWN; out.alt=-1; out.skew=NaN;
@@ -5164,7 +5182,11 @@ function assessCore(i,out){
   if(!runStrandBias){
     out.strand=STRAND_NONE;
   } else if(at<AS_STRAND_MIN_ALT) out.strand=STRAND_FEW;
-  else if(out.skew>AS_SKEW_BAD||out.altFrac===0||out.altFrac===1) out.strand=STRAND_BAD;
+  // alt all on one strand is an artefact on its own, so catch it before the ref guard.
+  else if(out.altFrac===0||out.altFrac===1) out.strand=STRAND_BAD;
+  // No reference reads to compare against (a fixed call): skip the skew test.
+  else if(rt<AS_STRAND_MIN_ALT) out.strand=STRAND_REFEW;
+  else if(out.skew>AS_SKEW_BAD) out.strand=STRAND_BAD;
   else if(out.skew>AS_SKEW_WARN) out.strand=STRAND_WARN;
   else out.strand=STRAND_GOOD;
 
@@ -5220,6 +5242,7 @@ function assessDetail(i){
   out.strandMsg =
     c.strand===STRAND_FEW ? `only ${c.alt} alt read${c.alt===1?'':'s'} — too few to judge`
   : c.strand===STRAND_BAD ? 'strongly skewed against the reference allele'
+  : c.strand===STRAND_REFEW? 'reference allele nearly absent — a fixed call; strand not judged against it'
   : c.strand===STRAND_WARN? 'some skew'
   : 'balanced, in line with the reference';
 
@@ -5241,15 +5264,24 @@ function assessDetail(i){
   if(c.strand===STRAND_WARN)
     out.reasons.push('some strand skew relative to the reference allele');
   if(c.verdict===ASSESS.REAL)
-    out.reasons.push('balanced across strands, adequate depth and support');
+    out.reasons.push(c.strand===STRAND_REFEW
+      ? 'a fixed call at adequate depth and support (no reference reads to judge strand)'
+      : 'balanced across strands, adequate depth and support');
   return out;
 }
 function computeAssessments(){
   assess=new Uint8Array(V.n); altReads=new Int32Array(V.n);
   const c=[0,0,0,0], tmp={};
+  // Use the pipeline's stated verdict when present (same rule, no drift); a row
+  // missing it (255) falls back to the DP4 recompute.
   for(let i=0;i<V.n;i++){
-    const d=assessCore(i,tmp);
-    assess[i]=d.verdict; altReads[i]=d.alt; c[d.verdict]++;
+    let v, a;
+    if(V.statedAssess && V.assessStated[i]!==255){
+      v=V.assessStated[i]; a=V.altStated[i];
+    } else {
+      const d=assessCore(i,tmp); v=d.verdict; a=d.alt;
+    }
+    assess[i]=v; altReads[i]=a; c[v]++;
   }
   assessStats={real:c[0],caution:c[1],artefact:c[2],unknown:c[3]};
 }
