@@ -149,15 +149,11 @@ the strand balance against the *reference* allele, and a verdict.
 *Likely artefact*, and *Cannot assess*. Each verdict lists its reasons. It weighs strand
 balance, depth, allele frequency, and the number of reads that support the
 call. Supporting reads are not the same as depth: a 0.5% call on 15,000× has high depth
-but may rest on only a few alt reads. A fixed call (one with essentially no
-reference reads) is *not* penalised on strand balance, because there is no
-reference allele to compare it against.
-
-Recent Flumina writes the verdict into the variant table itself (an `assessment`
-column). When it is present, FluLens reads it straight from the table, so the
-viewer and the pipeline always agree and the assessment works even on a run opened
-without its `vcf_files/`. For an older table with no such column, FluLens derives
-the verdict from the per-sample VCFs with the identical rule.
+but may rest on only a few alt reads. A fixed call, with almost no reference reads, is
+*not* penalised on strand balance, because there is no reference allele to compare it
+against. Recent Flumina writes the verdict into the variant table (an `assessment`
+column) and FluLens reads it from there, so the two always agree; without that column
+FluLens derives the same verdict from the per-sample VCFs.
 
 **Consensus view.** It shows each sample's own residue at every codon. It draws only the
 differences from the reference, not a full field of colour.
