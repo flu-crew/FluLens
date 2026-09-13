@@ -9,6 +9,9 @@
 // the app queries a few kilobytes of it per codon; reading whole files would
 // make the pileup unusable. In the browser that range comes from File.slice, in
 // dev from an HTTP Range header, and here from a seek.
+//
+// write_text is the one write command. It puts an export file into a folder the
+// user selected.
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
@@ -109,6 +112,26 @@ fn file_size(root: String, rel: String) -> Result<u64, String> {
     fs::metadata(&p).map(|m| m.len()).map_err(|e| e.to_string())
 }
 
+/// Writes one text file into `dir` and returns the full path.
+///
+/// `name` must be a single path component. A name holding `..` or a separator
+/// is rejected.
+#[tauri::command]
+fn write_text(dir: String, name: String, text: String) -> Result<String, String> {
+    let dirp = PathBuf::from(&dir);
+    if !dirp.is_dir() {
+        return Err(format!("not a directory: {dir}"));
+    }
+    let mut comps = Path::new(&name).components();
+    let leaf = match (comps.next(), comps.next()) {
+        (Some(std::path::Component::Normal(c)), None) => c.to_owned(),
+        _ => return Err(format!("not a file name: {name}")),
+    };
+    let p = dirp.join(leaf);
+    fs::write(&p, text).map_err(|e| format!("{}: {e}", p.display()))?;
+    Ok(p.to_string_lossy().into_owned())
+}
+
 /// Join and verify the path does not escape the root directory via ../ traversal.
 fn safe_join(root: &str, rel: &str) -> Result<PathBuf, String> {
     let rel_path = Path::new(rel);
@@ -146,11 +169,44 @@ fn set_last_run(app: tauri::AppHandle, path: String) -> Result<(), String> {
     fs::write(dir.join("last_run.txt"), path).map_err(|e| e.to_string())
 }
 
+#[cfg(test)]
+mod tests {
+    use super::write_text;
+
+    #[test]
+    fn write_text_rejects_names_that_are_paths() {
+        let dir = std::env::temp_dir().to_string_lossy().into_owned();
+        for bad in ["../escape.csv", "sub/file.csv", "/etc/passwd", "..", ""] {
+            assert!(
+                write_text(dir.clone(), bad.to_string(), "x".into()).is_err(),
+                "accepted {bad:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn write_text_writes_a_plain_name() {
+        let dir = std::env::temp_dir().join("flulens_write_text_test");
+        std::fs::create_dir_all(&dir).unwrap();
+        let dirs = dir.to_string_lossy().into_owned();
+        let p = write_text(dirs, "out.csv".into(), "a,b\n".into()).unwrap();
+        assert_eq!(std::fs::read_to_string(&p).unwrap(), "a,b\n");
+        std::fs::remove_file(&p).unwrap();
+    }
+
+    #[test]
+    fn write_text_rejects_a_directory_that_is_not_there() {
+        let dir = std::env::temp_dir().join("flulens_no_such_dir");
+        let dirs = dir.to_string_lossy().into_owned();
+        assert!(write_text(dirs, "out.csv".into(), "x".into()).is_err());
+    }
+}
+
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
-            list_files, read_text, read_bytes, file_size, last_run, set_last_run
+            list_files, read_text, read_bytes, file_size, write_text, last_run, set_last_run
         ])
         .run(tauri::generate_context!())
         .expect("error while running FluLens");

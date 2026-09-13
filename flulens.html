@@ -213,6 +213,34 @@
   .dlg h4{margin:0 0 8px;font:600 11px ui-monospace,monospace;letter-spacing:.07em;
     text-transform:uppercase;color:var(--muted)}
   .dlg .rowbtns{margin-top:4px}
+  /* The export dialog. One row per item: a tick, a count and a type menu.
+     A flex column with a fixed head and foot, so only the item list scrolls. */
+  #exportbox{display:flex;flex-direction:column;min-width:720px;max-width:880px;
+    max-height:92vh;overflow:auto;padding:22px 24px}
+  #exportbox h4{font-size:13px}
+  #exportbox .note{font-size:13px}
+  #exportbox button{font-size:13px}
+  #exportbox #exportscope{font-size:13px}
+  #exportbox .fld > span:first-child{width:104px}
+  /* The list takes the room the dialog has left and scrolls. Below the floor
+     the dialog scrolls instead. */
+  #exportlist{flex:1 1 auto;min-height:160px;overflow:auto}
+  .exset{display:flex;align-items:center;gap:10px;padding:4px 6px;border-radius:5px;
+    font:13px ui-monospace,monospace}
+  .exset:hover{background:var(--btn-hover-bg)}
+  .exset.off{opacity:.42}
+  /* The clickable part of a row: the tick and the name. */
+  .exset .exlab{display:flex;align-items:center;gap:8px;flex:1;min-width:0;
+    cursor:pointer}
+  .exset.off .exlab{cursor:default}
+  .exset .nm{flex:1;color:var(--text);white-space:nowrap;overflow:hidden;
+    text-overflow:ellipsis}
+  .exset .ct{color:var(--dim);flex:none;text-align:right;white-space:nowrap}
+  /* Fixed width, so the menus align in a column. */
+  .exset .extype{flex:none;width:104px;font:12px ui-monospace,monospace;
+    padding:2px 4px}
+  /* The item description. Its size comes from `#exportbox .note`. */
+  .exsub{margin:0 0 7px 32px;line-height:1.5}
   .plist{display:flex;flex-direction:column;gap:1px}
   .prod{display:flex;align-items:center;gap:6px;padding:3px 5px;border-radius:5px;
     font:11px ui-monospace,monospace;cursor:pointer}
@@ -684,12 +712,9 @@
       <div class="rowbtns">
         <button id="pick">📁 Open run folder…</button>
       </div>
-      <!-- Export sits with Open run folder as the run's input/output pair. It is
-           always visible but greys out when there is nothing to export — no run
-           open, or a view/filter state that leaves no rows. placeModeSwitch sets
-           the disabled state from exportBuild, the same rows the click writes. -->
+      <!-- Opens the export dialog. Greys out when no run is open. -->
       <div class="rowbtns" id="exportrow">
-        <button id="export" title="Export what is currently on screen">📦 Export results…</button>
+        <button id="export" title="Export any of the run's tables">📦 Export results…</button>
       </div>
       <div class="rowbtns">
         <button id="runnotes-toggle" title="Run summary and load notes">📋 Run notes…</button>
@@ -9853,13 +9878,9 @@ function placeModeSwitch(){
      something loads. */
   l.style.display=r.style.display=on?'flex':'none';
   { const vr=document.getElementById('vvR'); if(vr) vr.style.display=on?'flex':'none'; }
-  // Export is always present beside Open run folder, and greys out when there is
-  // nothing to write — no run, or a view/filter state that yields no rows. The
-  // emptiness comes from exportBuild itself, so the button and the file agree.
+  // The export button is enabled once a run holds calls.
   { const eb=document.getElementById('export');
-    if(eb){ let empty=true;
-      if(on){ const built=exportBuild(); empty=!built||!built.rows.length; }
-      eb.disabled=empty; } }
+    if(eb) eb.disabled=!(on&&V.n); }
   // Each view gets its own legend; showing both at once invites reading the
   // frequency ramp as if it coloured the selection cells.
   const sel=document.getElementById('sellegend'), freq=document.getElementById('lramp');
@@ -9999,107 +10020,61 @@ function placeModeSwitch(){
 function dpanelW(){ const d=document.getElementById('detail');
   return d&&!d.classList.contains('off')?d.getBoundingClientRect().width:0; }
 /* ---- export ---------------------------------------------------------------
-   Exports WHAT IS ON SCREEN, which is the only definition that is not a lie:
-   the current view, the current filters, the current sample ordering and the
-   hidden products. Exporting the whole table regardless of state would hand
-   someone a file that does not match the figure they were looking at, and they
-   would have no way to tell.
+   Writes the run's tables and sequences to files. The dialog lists every item,
+   the reader ticks the ones to write, and each ticked item becomes one file.
 
-   Every export carries a header block recording the filters that produced it.
-   A CSV of variant calls with no record of the min-depth that shaped it is not
-   reproducible, and this app's entire argument is that the provenance travels
-   with the number. */
-/* ---- export ---------------------------------------------------------------
-   Exports WHAT IS ON SCREEN, which is the only definition that is not a lie:
-   the current view, the current filters, the current sample ordering and the
-   hidden products. Exporting the whole table regardless of state would hand
-   someone a file that does not match the figure they were looking at, and they
-   would have no way to tell.
+   Each item declares the file types it can write and picks one from its own
+   menu. The scope control selects the display — the filters, the sample order,
+   the hidden products and the metadata columns — or the whole run.
 
-   One extraction, many serialisers. build() returns columns + rows and knows
-   nothing about formatting; each writer below turns that into bytes. Adding a
-   format must never mean touching the extraction, or the formats drift.
-
-   Every text export carries a provenance header recording the filters that
-   produced it. A file of variant calls with no record of the min-depth that
-   shaped it is not reproducible, and this app's whole argument is that the
-   provenance travels with the number. */
+   An item returns a list of keys and makes one row, or one sequence, from each
+   key. The serialisers below write CSV, TSV, TXT, JSON, Markdown, VCF or
+   FASTA. Every file starts with a provenance header. */
 function csvEscape(v, delim){
   const s=v==null?'':String(v);
   return (s.includes(delim)||s.includes('"')||s.includes('\n'))
     ? '"'+s.replace(/"/g,'""')+'"' : s;
 }
-function exportProvenance(){
-  const g=id=>{ const e=document.getElementById(id); return e?e.value:''; };
-  const L=[];
-  L.push(`FluLens export`);
-  L.push(`generated,${new Date().toISOString()}`);
-  L.push(`view,${viewMode}`);
-  L.push(`samples_shown,${NTvis} of ${NT}`);
-  L.push(`min_depth,${g('fdepth')}`);
-  L.push(`min_alt_reads,${g('falt')}`);
-  L.push(`min_freq_pct,${g('ffreq')}`);
-  L.push(`nonsynonymous_only,${document.getElementById('fnonsyn').checked}`);
-  L.push(`sites,${g('fsites')}`);
-  L.push(`assessment_filter,${g('fassess')}`);
-  L.push(`callers,${['flofreq','fivar','fgatk'].filter(id=>document.getElementById(id).checked)
-                   .map(id=>({flofreq:'LoFreq',fivar:'iVar',fgatk:'GATK4'})[id]).join(' ')||'none'}`);
-  if(hidden.size) L.push(`hidden_products,${[...hidden].join(' ')}`);
-  L.push(`note,thresholds above are the VIEW filters; the Variant Assessment uses fixed cut-offs`);
-  return L;
+
+/* The sample order for a file. "As shown" uses the order on screen.
+   "Everything" appends the samples the view hides. */
+function exportSampleOrder(all){
+  if(!all) return rowOrder;
+  const out=rowOrder.slice(), seen=new Set(rowOrder);
+  for(let i=0;i<NT;i++) if(!seen.has(i)) out.push(i);
+  return out;
+}
+/* Maps each sample to its place in the export order, or -1. */
+function exportPos(all){
+  const p=new Int32Array(NT).fill(-1);
+  exportSampleOrder(all).forEach((sm,i)=>{ p[sm]=i; });
+  return p;
+}
+/* True when the column belongs to a product the file writes. */
+function exportColOK(c, all){
+  const pi=colProd?colProd[c]:-1;
+  return pi>=0 && (all || !hidden.has(products[pi].product));
+}
+/* The segments that have a reference sequence, in draw order. */
+function exportSegments(){
+  const seen=new Set(products.map(p=>p.segment));
+  return SEG_ORDER.filter(g=>seen.has(g)&&refSeq.get(g));
 }
 
-/* Rows for the current view. Returns null when there is nothing to write. */
-function exportBuild(){
-  if(viewMode==='selection'){
-    if(!snpCells) return null;
-    const cols=['sample','product','codon','piN','piS','piN_minus_piS','one_sided'];
-    const rows=[]; const shown=new Set(rowOrder);
-    for(const [k,c] of snpCells){
-      const sm=(k/NC)|0; if(!shown.has(sm)) continue;
-      const col=k%NC, pi=colProd[col]; if(pi<0) continue;
-      const pr=products[pi]; if(hidden.has(pr.product)) continue;
-      rows.push([names[sm], pr.product, col-pr.off+1, c.piN, c.piS, c.d,
-                 ((c.piN===0)!==(c.piS===0))?'yes':'no']);
-    }
-    return {cols, rows};
-  }
-  if(viewMode==='consensus'){
-    // Same grid the view paints, or the export carries rows the reader cannot
-    // see — and for a silent change reference_aa and sample_aa are the same
-    // letter, which is not an amino-acid result at all.
-    const SRC=consSource();
-    if(!SRC) return null;
-    const cols=['sample','product','codon','reference_aa','sample_aa'];
-    const rows=[];
-    for(const sm of rowOrder){
-      for(let c=0;c<NC;c++){
-        const vi=SRC[sm*NC+c]; if(vi<0) continue;
-        const a=V.alt[vi]; if(a===255) continue;
-        const pi=colProd[c]; if(pi<0) continue;
-        const pr=products[pi]; if(hidden.has(pr.product)) continue;
-        rows.push([names[sm], pr.product, c-pr.off+1, refAt(c)||'', AAS[a]]);
-      }
-    }
-    return {cols, rows};
-  }
-  const cols=['sample','product','codon','segment','nt_position','reference','alternative',
-              'reference_aa','alternative_aa','nonsynonymous','frequency','depth','alt_reads',
-              'quality','caller','af_type','assessment'];
-  const pos=new Map(rowOrder.map((sm,i)=>[sm,i]));
-  const idx=[];
-  for(let n=0;n<keep.length;n++){ const i=keep[n]; if(pos.has(V.row[i])) idx.push(i); }
-  idx.sort((a,b)=> (pos.get(V.row[a])-pos.get(V.row[b])) || (V.col[a]-V.col[b]));
-  const rows=idx.map(i=>[
-    names[V.row[i]], V.prod[i], V.aapos[i], V.seg[i], V.pos[i], V.refnt[i], V.altnt[i],
+/* The 17 columns of a call, used by every item built from V. */
+const VARIANT_COLS=['sample','product','codon','segment','nt_position','reference','alternative',
+  'reference_aa','alternative_aa','nonsynonymous','frequency','depth','alt_reads',
+  'quality','caller','af_type','assessment'];
+function variantRow(i){
+  return [names[V.row[i]], V.prod[i], V.aapos[i], V.seg[i], V.pos[i], V.refnt[i], V.altnt[i],
     V.ref[i]===255?'':AAS[V.ref[i]], V.alt[i]===255?'':AAS[V.alt[i]],
-    V.nonsyn[i]?'YES':'NO', V.freq[i], V.depth[i],
+    V.nonsyn[i]?'YES':'NO',
+    // Frequency exports at 5 decimal places.
+    +V.freq[i].toFixed(5), V.depth[i],
     (altReads&&altReads[i]>=0)?altReads[i]:'', V.qual[i],
     CALLER[V.method[i]],
     V.afType?(['','fraction','genotype'][V.afType[i]]||''):'',
-    assess?ASSESS_LABEL[assess[i]]:''
-  ]);
-  return {cols, rows, idx};
+    assess?ASSESS_LABEL[assess[i]]:''];
 }
 
 /* Segment name as the REFERENCE spells it. V.seg is shortLocus'd ('PB2'), but a
@@ -10110,136 +10085,582 @@ function rawLocusOf(short){
   return short;
 }
 
-const EXPORT_FORMATS={
-  csv : {ext:'csv',  label:'CSV — comma separated'},
-  tsv : {ext:'tsv',  label:'TSV — tab separated'},
-  txt : {ext:'txt',  label:'TXT — tab separated, .txt'},
-  json: {ext:'json', label:'JSON — array of objects'},
-  md  : {ext:'md',   label:'Markdown table'},
-  vcf : {ext:'vcf',  label:'VCF 4.2 — variants view only'}
+/* The file types an item can offer. `kind` selects the serialiser. */
+const EXPORT_TYPES={
+  csv  : {ext:'csv',   label:'CSV',      kind:'table'},
+  tsv  : {ext:'tsv',   label:'TSV',      kind:'table'},
+  txt  : {ext:'txt',   label:'TXT',      kind:'table'},
+  json : {ext:'json',  label:'JSON',     kind:'table'},
+  md   : {ext:'md',    label:'Markdown', kind:'table'},
+  vcf  : {ext:'vcf',   label:'VCF',      kind:'vcf'},
+  fasta: {ext:'fasta', label:'FASTA',    kind:'fasta'}
 };
+/* Type lists for the item declarations. CALL_TYPES adds VCF, which only items
+   whose columns are VARIANT_COLS use. */
+const TABLE_TYPES=['csv','tsv','txt','json','md'];
+const CALL_TYPES=TABLE_TYPES.concat('vcf');
 
-function exportSerialise(fmt, built){
+/* Every item the app can write.
+
+     shape          'table' makes rows, 'fasta' makes sequences
+     types          the file types its menu offers; the first is the default
+     label / note   the text the dialog shows
+     have()         true when the run has the item, in memory or on disk
+     ready()        true when the item is in memory
+     load()         reads the item; only items that load on demand have it
+     filtered       true when the call filters change the item
+     needsAssess    true when the item carries alt_reads and assessment
+     provNote       an extra provenance line
+     idx(all)       the keys to write, in order
+     cols(all)      the header, for the 'table' shape
+     row(key, all)  makes one row, or one FASTA record, from one key
+
+   A count is idx().length. */
+const EXPORT_SETS={
+  variants:{
+    shape:'table', types:CALL_TYPES,
+    label:'Variant calls',
+    note:'One row per call: position, alleles, frequency, depth, caller and assessment.',
+    filtered:true, needsAssess:true,
+    have:()=>V.n>0, ready:()=>V.n>0,
+    cols:()=>VARIANT_COLS,
+    idx(all){
+      const pos=exportPos(all), out=[];
+      if(all){ for(let i=0;i<V.n;i++) if(exportColOK(V.col[i],true)) out.push(i); }
+      else for(let n=0;n<keep.length;n++){ const i=keep[n]; if(pos[V.row[i]]>=0) out.push(i); }
+      out.sort((a,b)=>(pos[V.row[a]]-pos[V.row[b]])||(V.col[a]-V.col[b]));
+      return out;
+    },
+    row:i=>variantRow(i)
+  },
+  consensus:{
+    shape:'table', types:TABLE_TYPES,
+    label:'Consensus residues',
+    note:'Every codon where a sample’s consensus residue differs from the reference.',
+    have:()=>!!consVarAA, ready:()=>!!consVarAA,
+    cols:()=>['sample','product','codon','reference_aa','sample_aa'],
+    idx(all){
+      const out=[];
+      for(const sm of exportSampleOrder(all))
+        for(let c=0;c<NC;c++){
+          if(consVarAA[sm*NC+c]<0) continue;
+          if(!exportColOK(c,all)) continue;
+          out.push(sm*NC+c);
+        }
+      return out;
+    },
+    row(k){
+      const sm=(k/NC)|0, c=k%NC, pr=products[colProd[c]];
+      return [names[sm], pr.product, c-pr.off+1, refAt(c)||'', AAS[V.alt[consVarAA[k]]]];
+    }
+  },
+  consensus_aa:{
+    shape:'fasta', types:['fasta'],
+    label:'Consensus proteins',
+    note:'One record per sample and product, in amino acids. The reference protein with the sample’s calls above 50% applied.',
+    /* The sequence is the reference protein with the sample's calls applied.
+       A product with no calls is written as the reference. */
+    provNote:'a product that did not assemble is written as the reference; read changes= on each record',
+    have:()=>!!consAlt&&!!refProt, ready:()=>!!consAlt&&!!refProt,
+    idx(all){
+      const NP=products.length, out=[];
+      for(const sm of exportSampleOrder(all))
+        for(let pi=0;pi<NP;pi++){
+          const pr=products[pi];
+          if(!all&&hidden.has(pr.product)) continue;
+          if(!refProt.get(pr.product)) continue;
+          out.push(sm*NP+pi);
+        }
+      return out;
+    },
+    row(k){
+      const NP=products.length, sm=(k/NP)|0, pr=products[k%NP];
+      const s=refProt.get(pr.product).split('');
+      let n=0;
+      for(let i=0;i<pr.aa&&i<s.length;i++){
+        const a=consAlt[sm*NC+pr.off+i];
+        if(a!==255){ s[i]=AAS[a]; n++; }
+      }
+      return {id:`${names[sm]}|${pr.product}`,
+              desc:`sample=${names[sm]} product=${pr.product} type=consensus_protein changes=${n}`,
+              seq:s.join('')};
+    }
+  },
+  consensus_nt:{
+    shape:'table', types:CALL_TYPES,
+    label:'Consensus calls, nucleotide',
+    note:'The call that made each consensus codon. Silent changes are included. The columns are the same as the calls table.',
+    needsAssess:true,
+    have:()=>!!consVar, ready:()=>!!consVar,
+    cols:()=>VARIANT_COLS,
+    idx(all){
+      const out=[];
+      for(const sm of exportSampleOrder(all))
+        for(let c=0;c<NC;c++){
+          const vi=consVar[sm*NC+c];
+          if(vi<0||!exportColOK(c,all)) continue;
+          out.push(vi);
+        }
+      return out;
+    },
+    row:i=>variantRow(i)
+  },
+  consensus_seq:{
+    shape:'fasta', types:['fasta'],
+    label:'Consensus segments, nucleotide',
+    note:'One record per sample and segment. The reference segment with every consensus call applied at its own position.',
+    provNote:'a segment that did not assemble is written as the reference; read changes= on each record',
+    have:()=>!!consVar&&refSeq.size>0, ready:()=>!!consVar&&refSeq.size>0,
+    idx(all){
+      const segs=exportSegments(), NS=segs.length, out=[];
+      for(const sm of exportSampleOrder(all))
+        for(let g=0;g<NS;g++) out.push(sm*NS+g);
+      return out;
+    },
+    row(k, all){
+      const segs=exportSegments(), NS=segs.length;
+      const sm=(k/NS)|0, seg=segs[k%NS];
+      const ref=refSeq.get(seg), s=ref.split('');
+      const put=new Map(); let unmatched=0, clash=0;
+      /* V.pos is a segment position and refSeq uses the same index, so each
+         alt base goes in at V.pos - 1. Tests read `ref`, the untouched
+         reference. `put` records the positions written, so a position two
+         products share is written once and counted once. */
+      for(let c=0;c<NC;c++){
+        const vi=consVar[sm*NC+c];
+        if(vi<0||V.seg[vi]!==seg||!exportColOK(c,all)) continue;
+        const p=V.pos[vi]-1;
+        // Skip a call whose reference base does not match the reference.
+        if(p<0||p>=s.length||ref[p]!==V.refnt[vi]){ unmatched++; continue; }
+        const was=put.get(p);
+        // A written position keeps its first allele. A second, different
+        // allele counts as a conflict.
+        if(was!==undefined){ if(was!==V.altnt[vi]) clash++; continue; }
+        put.set(p, V.altnt[vi]); s[p]=V.altnt[vi];
+      }
+      return {id:`${names[sm]}|${seg}`,
+              desc:`sample=${names[sm]} segment=${seg} type=consensus_nt`
+                   +` changes=${put.size}`
+                   +(unmatched?` unmatched=${unmatched}`:'')
+                   +(clash?` conflicts=${clash}`:''),
+              seq:s.join('')};
+    }
+  },
+  irma:{
+    shape:'table', types:TABLE_TYPES,
+    label:'IRMA consensus changes',
+    note:'The residues where IRMA’s consensus differs from the reference, with IRMA’s depth.',
+    missing:'no IRMA consensus in this run',
+    have:()=>!!irmaSt||!!(findFile('variant_analysis/irma/irma_consensus_aa.tsv','irma_consensus_aa.tsv')
+                       && findFile('variant_analysis/irma/irma_position_map.tsv','irma_position_map.tsv')),
+    ready:()=>!!irmaSt, load:()=>ensureIRMA(),
+    cols:()=>['sample','product','codon','reference_aa','irma_aa','status','irma_depth'],
+    idx(all){
+      const out=[];
+      for(const sm of exportSampleOrder(all))
+        for(let c=0;c<NC;c++){
+          const k=sm*NC+c;
+          if(!irmaIsChange(irmaSt[k])||!exportColOK(c,all)) continue;
+          out.push(k);
+        }
+      return out;
+    },
+    row(k){
+      const sm=(k/NC)|0, c=k%NC, pr=products[colProd[c]];
+      return [names[sm], pr.product, c-pr.off+1, refAt(c)||'',
+              irmaAA[k]===255?'':AAS[irmaAA[k]], IRMA_LABEL[irmaSt[k]]||'',
+              irmaDep[k]>=0?irmaDep[k]:''];
+    }
+  },
+  irma_aa:{
+    shape:'fasta', types:['fasta'],
+    label:'IRMA consensus proteins',
+    note:'One record per frame IRMA placed, from IRMA’s own residues. X marks a codon IRMA did not state.',
+    /* Written for placed frames only. Each residue comes from IRMA, from the
+       reference where IRMA reports agreement, or is X. */
+    provNote:'only the frames IRMA placed are written; X marks a codon IRMA did not state',
+    missing:'no IRMA consensus in this run',
+    have:()=>!!refProt&&(!!irmaSt||!!(findFile('variant_analysis/irma/irma_consensus_aa.tsv','irma_consensus_aa.tsv')
+                       && findFile('variant_analysis/irma/irma_position_map.tsv','irma_position_map.tsv'))),
+    ready:()=>!!irmaSt&&!!refProt, load:()=>ensureIRMA(),
+    idx(all){
+      const NP=products.length, out=[];
+      for(const sm of exportSampleOrder(all))
+        for(let pi=0;pi<NP;pi++){
+          const pr=products[pi];
+          if(!all&&hidden.has(pr.product)) continue;
+          if(!refProt.get(pr.product)) continue;
+          const fr=irmaFrame&&irmaFrame.get(sm+'|'+pr.product);
+          if(!fr||(fr.status!=='identity'&&fr.status!=='aligned')) continue;
+          out.push(sm*NP+pi);
+        }
+      return out;
+    },
+    row(k){
+      const NP=products.length, sm=(k/NP)|0, pr=products[k%NP];
+      const ref=refProt.get(pr.product);
+      const s=[]; let stated=0, gaps=0;
+      for(let i=0;i<pr.aa;i++){
+        const kk=sm*NC+pr.off+i, a=irmaAA[kk];
+        if(a!==255){ s.push(AAS[a]); stated++; }
+        else if(irmaSt[kk]===0) s.push(ref[i]||'X');
+        else { s.push('X'); gaps++; }
+      }
+      return {id:`${names[sm]}|${pr.product}`,
+              desc:`sample=${names[sm]} product=${pr.product} type=irma_protein`
+                   +` stated=${stated}`+(gaps?` unstated=${gaps}`:''),
+              seq:s.join('')};
+    }
+  },
+  samples:{
+    shape:'table', types:TABLE_TYPES,
+    label:'Sample summary and QC',
+    note:'One row per sample: the QC verdict, its inputs, and the metadata columns.',
+    have:()=>NT>0, ready:()=>NT>0,
+    cols:all=>['sample','shown','qc','qc_source','calls_total','calls_shown','median_depth',
+      'low_depth_fraction','products_with_calls','segments_recovered','reads_matched',
+      'reads_unmatched'].concat(all?metaCols:metaShow),
+    idx:all=>exportSampleOrder(all),
+    row(sm, all){
+      const st=qcStat[sm]||{calls:0,med:0,low:1,prods:0,segs:null};
+      const rec=segCache.get(names[sm]);
+      const m=meta.get(names[sm])||{};
+      return [names[sm], (rowPos&&rowPos[sm]>=0)?'YES':'NO',
+              qcOf(sm)===1?'pass':'fail', qcIsManual(sm)?'manual':'auto',
+              st.calls, callCount?callCount[sm]:'', st.med, +st.low.toFixed(4), st.prods,
+              st.segs===null?'':st.segs, rec?rec.match:'', rec?rec.nomatch:''
+             ].concat((all?metaCols:metaShow).map(c=>m[c]==null?'':m[c]));
+    }
+  }
+};
+/* The order the dialog lists the items in. */
+const EXPORT_ORDER=['variants','consensus','consensus_aa','consensus_nt',
+                    'consensus_seq','irma','irma_aa','samples'];
+const EXPORT_UNIT={table:'rows', fasta:'sequences'};
+
+/* The type each item writes. Kept for the session. */
+const exportType=new Map(EXPORT_ORDER.map(k=>[k, EXPORT_SETS[k].types[0]]));
+const exportExt=key=>EXPORT_TYPES[exportType.get(key)].ext;
+
+/* Key lists, cached while the dialog is open, so the counts and the files come
+   from one walk. */
+let exportIdxCache=new Map();
+/* The items the reader ticked, held apart from the checkboxes the dialog
+   rebuilds. */
+let exportWant=new Set();
+function exportKeys(key, all){
+  const ck=key+'|'+all;
+  if(!exportIdxCache.has(ck)){
+    const d=EXPORT_SETS[key];
+    exportIdxCache.set(ck, d.ready()?d.idx(all):[]);
+  }
+  return exportIdxCache.get(ck);
+}
+function exportBuildItem(key, all){
+  const d=EXPORT_SETS[key], keys=exportKeys(key, all);
+  if(d.shape==='fasta') return {recs:keys.map(k=>d.row(k, all))};
+  return {cols:d.cols(all), rows:keys.map(k=>d.row(k, all))};
+}
+
+function exportProvenance(key, all){
+  const d=EXPORT_SETS[key];
+  const g=id=>{ const e=document.getElementById(id); return e?e.value:''; };
+  const L=[];
+  L.push('FluLens export');
+  L.push(`generated,${new Date().toISOString()}`);
+  L.push(`item,${key}`);
+  L.push(`file_type,${exportExt(key)}`);
+  L.push(`scope,${all?'everything in the run':'as shown on screen'}`);
+  L.push(`view_open,${viewMode}`);
+  L.push(`samples_written,${all?NT:NTvis} of ${NT}`);
+  if(!all&&hidden.size) L.push(`hidden_products,${[...hidden].join(' ')}`);
+  if(!d.filtered){
+    L.push('call_filters,not applicable — this item is not built from filtered calls');
+  } else if(all){
+    L.push('call_filters,not applied — this file holds every call in the run');
+  } else {
+    L.push(`min_depth,${g('fdepth')}`);
+    L.push(`min_alt_reads,${g('falt')}`);
+    L.push(`min_freq_pct,${g('ffreq')}`);
+    L.push(`nonsynonymous_only,${document.getElementById('fnonsyn').checked}`);
+    L.push(`sites,${g('fsites')}`);
+    L.push(`assessment_filter,${g('fassess')}`);
+    L.push(`callers,${['flofreq','fivar','fgatk'].filter(id=>document.getElementById(id).checked)
+                     .map(id=>({flofreq:'LoFreq',fivar:'iVar',fgatk:'GATK4'})[id]).join(' ')||'none'}`);
+    L.push('note,thresholds above are the VIEW filters; the Variant Assessment uses fixed cut-offs');
+  }
+  if(d.provNote) L.push('note,'+d.provNote);
+  return L;
+}
+
+function exportSerialiseTable(type, built, prov){
   const {cols, rows}=built;
-  const prov=exportProvenance();
-  if(fmt==='json'){
+  if(type==='json'){
     // Provenance as a sibling object rather than comment lines, since JSON has
     // nowhere to put a comment.
     const meta={}; for(const l of prov.slice(1)){ const i=l.indexOf(','); meta[l.slice(0,i)]=l.slice(i+1); }
     return JSON.stringify({export:'FluLens', filters:meta,
       rows:rows.map(r=>Object.fromEntries(cols.map((c,i)=>[c,r[i]])))}, null, 2);
   }
-  if(fmt==='md'){
+  if(type==='md'){
     const esc=v=>String(v==null?'':v).replace(/\|/g,'\\|');
     return prov.map(l=>'<!-- '+l+' -->').join('\n')+'\n\n'
       + '| '+cols.join(' | ')+' |\n'
       + '|'+cols.map(()=>'---').join('|')+'|\n'
       + rows.map(r=>'| '+r.map(esc).join(' | ')+' |').join('\n')+'\n';
   }
-  if(fmt==='vcf'){
-    const c=Object.fromEntries(cols.map((n,i)=>[n,i]));
-    const out=['##fileformat=VCFv4.2', '##source=FluLens'];
-    for(const l of prov.slice(1)) out.push('##FluLens_'+l.replace(',','='));
-    out.push('##INFO=<ID=SAMPLE,Number=1,Type=String,Description="Sample name">');
-    out.push('##INFO=<ID=AF,Number=1,Type=Float,Description="Allele frequency as shown; see AFTYPE">');
-    out.push('##INFO=<ID=AFTYPE,Number=1,Type=String,Description="fraction (LoFreq) or genotype (GATK4)">');
-    out.push('##INFO=<ID=DP,Number=1,Type=Integer,Description="Depth at the position">');
-    out.push('##INFO=<ID=AD,Number=1,Type=Integer,Description="Reads supporting the alt allele">');
-    out.push('##INFO=<ID=CALLER,Number=1,Type=String,Description="Variant caller">');
-    out.push('##INFO=<ID=PROD,Number=1,Type=String,Description="Gene product">');
-    out.push('##INFO=<ID=AAPOS,Number=1,Type=Integer,Description="Codon within the product">');
-    out.push('##INFO=<ID=ASSESS,Number=1,Type=String,Description="FluLens assessment">');
-    out.push('#'+['CHROM','POS','ID','REF','ALT','QUAL','FILTER','INFO'].join('\t'));
-    for(const r of rows){
-      const info=[`SAMPLE=${r[c.sample]}`, `AF=${r[c.frequency]}`,
-        r[c.af_type]?`AFTYPE=${r[c.af_type]}`:null,
-        `DP=${r[c.depth]}`, r[c.alt_reads]!==''?`AD=${r[c.alt_reads]}`:null,
-        `CALLER=${r[c.caller]}`, `PROD=${r[c.product]}`, `AAPOS=${r[c.codon]}`,
-        r[c.assessment]?`ASSESS=${String(r[c.assessment]).replace(/[ ;=]/g,'_')}`:null
-      ].filter(Boolean).join(';');
-      out.push([rawLocusOf(r[c.segment]), r[c.nt_position], '.',
-                r[c.reference], r[c.alternative], r[c.quality], '.', info].join('\t'));
-    }
-    return out.join('\n')+'\n';
-  }
-  const d = fmt==='csv' ? ',' : '\t';
+  const d = type==='csv' ? ',' : '\t';
   return prov.map(l=>'# '+l).join('\n')+'\n'
        + cols.join(d)+'\n'
        + rows.map(r=>r.map(v=>csvEscape(v,d)).join(d)).join('\n')+'\n';
 }
 
+function exportSerialiseVCF(built, prov){
+  const {cols, rows}=built;
+  const c=Object.fromEntries(cols.map((n,i)=>[n,i]));
+  const out=['##fileformat=VCFv4.2', '##source=FluLens'];
+  for(const l of prov.slice(1)) out.push('##FluLens_'+l.replace(',','='));
+  out.push('##INFO=<ID=SAMPLE,Number=1,Type=String,Description="Sample name">');
+  out.push('##INFO=<ID=AF,Number=1,Type=Float,Description="Allele frequency as shown; see AFTYPE">');
+  out.push('##INFO=<ID=AFTYPE,Number=1,Type=String,Description="fraction (LoFreq) or genotype (GATK4)">');
+  out.push('##INFO=<ID=DP,Number=1,Type=Integer,Description="Depth at the position">');
+  out.push('##INFO=<ID=AD,Number=1,Type=Integer,Description="Reads supporting the alt allele">');
+  out.push('##INFO=<ID=CALLER,Number=1,Type=String,Description="Variant caller">');
+  out.push('##INFO=<ID=PROD,Number=1,Type=String,Description="Gene product">');
+  out.push('##INFO=<ID=AAPOS,Number=1,Type=Integer,Description="Codon within the product">');
+  out.push('##INFO=<ID=ASSESS,Number=1,Type=String,Description="FluLens assessment">');
+  out.push('#'+['CHROM','POS','ID','REF','ALT','QUAL','FILTER','INFO'].join('\t'));
+  for(const r of rows){
+    const info=[`SAMPLE=${r[c.sample]}`, `AF=${r[c.frequency]}`,
+      r[c.af_type]?`AFTYPE=${r[c.af_type]}`:null,
+      `DP=${r[c.depth]}`, r[c.alt_reads]!==''?`AD=${r[c.alt_reads]}`:null,
+      `CALLER=${r[c.caller]}`, `PROD=${r[c.product]}`, `AAPOS=${r[c.codon]}`,
+      r[c.assessment]?`ASSESS=${String(r[c.assessment]).replace(/[ ;=]/g,'_')}`:null
+    ].filter(Boolean).join(';');
+    out.push([rawLocusOf(r[c.segment]), r[c.nt_position], '.',
+              r[c.reference], r[c.alternative], r[c.quality], '.', info].join('\t'));
+  }
+  return out.join('\n')+'\n';
+}
+
+/* Writes the provenance as leading ';' lines, then one record per sequence at
+   60 characters a line. Each defline repeats the key facts. */
+function exportSerialiseFASTA(built, prov){
+  const out=prov.map(l=>'; '+l);
+  for(const r of built.recs){
+    out.push('>'+r.id+(r.desc?' '+r.desc:''));
+    for(let i=0;i<r.seq.length;i+=60) out.push(r.seq.slice(i,i+60));
+  }
+  return out.join('\n')+'\n';
+}
+
+function exportSerialise(key, built, prov){
+  const type=exportType.get(key), kind=EXPORT_TYPES[type].kind;
+  if(kind==='vcf')   return exportSerialiseVCF(built, prov);
+  if(kind==='fasta') return exportSerialiseFASTA(built, prov);
+  return exportSerialiseTable(type, built, prov);
+}
+
+function exportDownload(name, text){
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([text],{type:'text/plain'}));
+  a.download=name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 10000);
+}
+
+/* Where the files go. The desktop shell asks for a folder once and writes into
+   it with write_text. The browser downloads each file instead. */
+let exportDir=null;    // the folder the last export of this session used
+async function exportPickDir(){
+  const { open } = window.__TAURI__.dialog;
+  const dir = await open({directory:true, multiple:false,
+                          defaultPath:exportDir||undefined,
+                          title:'Where should the export files go?'});
+  if(dir) exportDir=dir;
+  return dir;
+}
+async function exportWrite(dir, name, text){
+  if(dir) return window.__TAURI__.core.invoke('write_text', {dir, name, text});
+  exportDownload(name, text);
+  // A gap between downloads, so the browser keeps every file.
+  await new Promise(r=>setTimeout(r,150));
+}
+
 function closeExportDialog(){
   const d=document.getElementById('exportdlg'); if(d) d.remove();
 }
-async function doExport(){
-  /* The variants export carries alt_reads and assessment, and both only exist
-     once the VCFs have been read. That read is opt-in for the on-screen view —
-     nobody should pay for it just to look at frequencies — but an export with
-     two silently blank columns is worse than one that takes a moment. */
-  if(viewMode==='variants'&&!assessReady){
-    setChip('reading VCFs for the export…');
-    await ensureAssessments();
+
+/* Redraws the counts, the availability and the footer. Runs after a change to
+   the scope, a type or a tick. */
+function exportRefresh(){
+  const wrap=document.getElementById('exportdlg'); if(!wrap) return;
+  const all=document.getElementById('exportscope').value==='all';
+  let items=0, files=0, rows=0, seqs=0;
+  for(const key of EXPORT_ORDER){
+    const d=EXPORT_SETS[key];
+    const row=wrap.querySelector(`.exset[data-ds="${key}"]`);
+    const box=row.querySelector('input'), ct=row.querySelector('.ct'),
+          sel=row.querySelector('select');
+    const gone=!d.have();
+    box.disabled=gone;
+    box.checked = !gone && exportWant.has(key);
+    if(sel) sel.disabled=gone;
+    row.classList.toggle('off', gone);
+    const n = gone||!d.ready() ? 0 : exportKeys(key, all).length;
+    ct.textContent = gone ? (d.missing||'not in this run')
+                   : d.ready() ? `${n.toLocaleString()} ${EXPORT_UNIT[d.shape]}`
+                   : 'tick to read';
+    if(box.checked){
+      items++; if(n) files++;
+      if(d.shape==='fasta') seqs+=n; else rows+=n;
+    }
   }
-  const built=exportBuild();
-  if(!built){
-    setChip(viewMode==='selection'?'no codon table to export':'nothing to export yet');
-    return;
-  }
+  const parts=[];
+  if(rows) parts.push(`${rows.toLocaleString()} rows`);
+  if(seqs) parts.push(`${seqs.toLocaleString()} sequences`);
+  document.getElementById('exportsum').textContent = items
+    ? `${items} ${items===1?'item':'items'}`
+      + (parts.length?' · '+parts.join(' · '):'')
+      + ` · ${files===1?'one file':files+' files'}`
+    : 'Nothing ticked.';
+  document.getElementById('exportgo').disabled = !items;
+}
+
+function doExport(){
+  if(!ready||!NT||!V.n){ setChip('nothing to export yet'); return; }
   closeExportDialog();
+  exportIdxCache=new Map();
   const wrap=document.createElement('div');
   wrap.id='exportdlg'; wrap.className='dlgwrap';
-  // VCF describes variant calls at nucleotide positions; the consensus and
-  // selection views are per-codon summaries with no REF/ALT to write, so the
-  // option is offered only where it means something rather than silently
-  // producing a malformed file.
-  const opts=Object.entries(EXPORT_FORMATS)
-    /* Both views that build the variant row set. exportBuild returns the same
-       17 columns for 'nucleotides' as for 'variants' — the alphabet on screen
-       does not change what a call is — so withholding VCF there withheld it
-       from a file it could write correctly. */
-    .filter(([k])=>k!=='vcf'||viewMode==='variants'||viewMode==='nucleotides')
-    .map(([k,f])=>`<option value="${k}">${f.label}</option>`).join('');
+  /* The type menu is a sibling of the label, not a child, so a click on the
+     menu does not toggle the checkbox. */
+  const setRows=EXPORT_ORDER.map(k=>{
+    const d=EXPORT_SETS[k];
+    const opts=d.types.map(t=>
+      `<option value="${t}">${EXPORT_TYPES[t].label}</option>`).join('');
+    return `<div class="exset" data-ds="${k}">
+       <label class="exlab"><input type="checkbox"><span class="nm">${esc(d.label)}</span></label>
+       <span class="ct"></span>
+       <select class="extype" title="The file type for this item">${opts}</select>
+     </div>
+     <div class="note exsub">${esc(d.note)}</div>`;
+  }).join('');
   wrap.innerHTML=
-    `<div class="dlg">
+    `<div class="dlg" id="exportbox">
        <h4>Export</h4>
-       <div class="note" style="margin-bottom:9px">
-         ${built.rows.length.toLocaleString()} rows from the
-         <b>${esc(viewMode)}</b> view, as currently filtered.
-         The file records the filter settings that produced it.</div>
-       <div class="fld"><span>format</span>
-         <select id="exportfmt" style="flex:1;min-width:0">${opts}</select></div>
-       <div class="note" id="exportnote" style="margin:2px 0 10px"></div>
+       <div class="note" style="margin-bottom:12px">
+         Every item in this run, and not only the item on screen. Each ticked
+         item writes its own file, in the type you pick beside it. Each file has
+         a header with the settings that made it.
+         ${TAURI ? 'FluLens asks for a folder.'
+                 : 'Your browser downloads the files one at a time.'}</div>
+       <div class="fld"><span>scope</span>
+         <select id="exportscope" style="flex:1;min-width:0">
+           <option value="shown">as shown — filters, sample order, hidden products</option>
+           <option value="all">everything — ignore the filters</option>
+         </select></div>
+       <h4 style="display:flex;align-items:center;gap:8px;margin:12px 0 6px">
+         <span style="flex:1">Items</span>
+         <span class="mini-btngroup">
+           <button class="mini-btn" id="exportsetall" title="Tick every item this run has">All</button>
+           <button class="mini-btn" id="exportsetnone" title="Untick every item">None</button>
+         </span></h4>
+       <div id="exportlist" class="plist">${setRows}</div>
+       <div class="note" id="exportsum" style="margin:12px 0 9px"></div>
        <div class="rowbtns">
          <button id="exportgo">Export</button>
          <button id="exportcancel">Cancel</button>
        </div>
      </div>`;
   document.body.appendChild(wrap);
-  const sel=document.getElementById('exportfmt');
-  const note=document.getElementById('exportnote');
-  const describe=()=>{
-    const f=sel.value;
-    note.textContent =
-      f==='vcf'  ? 'CHROM uses the reference’s own segment names, so the file lines up with the reference FASTA.'
-    : f==='json' ? 'Filter settings are included as an object rather than comment lines.'
-    : f==='md'   ? 'For pasting into notes or an issue; provenance goes in HTML comments.'
-    : f==='txt'  ? 'Tab separated with a .txt extension — what most spreadsheet imports expect.'
-    : 'Provenance is written as leading # comment lines.';
+
+  /* Ticks an item, and reads it first when it is not in memory. */
+  const want=async key=>{
+    const d=EXPORT_SETS[key];
+    exportWant.add(key);
+    if(d.ready()||!d.load) return;
+    const ct=wrap.querySelector(`.exset[data-ds="${key}"] .ct`);
+    if(ct) ct.textContent='reading…';
+    await d.load();
+    for(const a of [true,false]) exportIdxCache.delete(key+'|'+a);
+    if(!d.ready()) exportWant.delete(key);
   };
-  sel.onchange=describe; describe();
+  for(const row of wrap.querySelectorAll('.exset')){
+    const key=row.dataset.ds;
+    const box=row.querySelector('input'), sel=row.querySelector('select');
+    box.onchange=async()=>{
+      if(box.checked) await want(key); else exportWant.delete(key);
+      exportRefresh();
+    };
+    sel.value=exportType.get(key);
+    sel.onchange=()=>{ exportType.set(key, sel.value); exportRefresh(); };
+  }
+  document.getElementById('exportsetall').onclick=async()=>{
+    for(const key of EXPORT_ORDER) if(EXPORT_SETS[key].have()) await want(key);
+    exportRefresh();
+  };
+  document.getElementById('exportsetnone').onclick=()=>{
+    exportWant.clear(); exportRefresh();
+  };
+  document.getElementById('exportscope').onchange=exportRefresh;
   document.getElementById('exportcancel').onclick=closeExportDialog;
   wrap.onclick=e=>{ if(e.target===wrap) closeExportDialog(); };
-  document.getElementById('exportgo').onclick=()=>{
-    const fmt=sel.value, spec=EXPORT_FORMATS[fmt];
-    const text=exportSerialise(fmt, built);
+
+  // Ticks the item for the open view. The selection view has no item, so it
+  // ticks the variant calls.
+  let openItem = viewMode==='consensus' ? 'consensus' : 'variants';
+  if(!EXPORT_SETS[openItem].ready()) openItem='variants';
+  exportWant=new Set([openItem]);
+  exportRefresh();
+
+  document.getElementById('exportgo').onclick=async()=>{
+    const all=document.getElementById('exportscope').value==='all';
+    const picked=EXPORT_ORDER.filter(k=>{
+      const b=wrap.querySelector(`.exset[data-ds="${k}"] input`);
+      return b && b.checked;
+    });
+    if(!picked.length) return;
+    /* The alt_reads and assessment columns come from the VCFs. Read them now
+       when a ticked item carries them. */
+    if(!assessReady&&picked.some(k=>EXPORT_SETS[k].needsAssess)){
+      document.getElementById('exportsum').textContent='reading VCFs for the export…';
+      await ensureAssessments();
+      exportIdxCache=new Map();
+    }
+    let dir=null;
+    if(TAURI){
+      dir=await exportPickDir();
+      // A cancelled folder dialog ends the export and leaves this dialog
+      // open, with the ticks and the types unchanged.
+      if(!dir) return;
+    }
     const stamp=new Date().toISOString().slice(0,19).replace(/[:T]/g,'-');
-    const a=document.createElement('a');
-    a.href=URL.createObjectURL(new Blob([text],{type:'text/plain'}));
-    a.download=`flulens-${viewMode}-${stamp}.${spec.ext}`;
-    document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(()=>URL.revokeObjectURL(a.href), 10000);
+    let rows=0, seqs=0, files=0;
+    for(const key of picked){
+      const d=EXPORT_SETS[key], built=exportBuildItem(key, all);
+      const n=d.shape==='fasta'?built.recs.length:built.rows.length;
+      if(!n) continue;
+      try{
+        await exportWrite(dir, `flulens-${key}-${stamp}.${exportExt(key)}`,
+                          exportSerialise(key, built, exportProvenance(key, all)));
+      }catch(e){
+        // Show the error in place of the count and keep the dialog open.
+        document.getElementById('exportsum').textContent =
+          'cannot write: '+(e&&e.message||e);
+        return;
+      }
+      if(d.shape==='fasta') seqs+=n; else rows+=n;
+      files++;
+    }
     closeExportDialog();
-    setChip(`exported ${built.rows.length.toLocaleString()} rows as ${spec.ext.toUpperCase()}`);
+    const parts=[];
+    if(rows) parts.push(`${rows.toLocaleString()} rows`);
+    if(seqs) parts.push(`${seqs.toLocaleString()} sequences`);
+    setChip(files
+      ? `exported ${parts.join(' and ')} to ${files===1?'one file':files+' files'}`
+        + (dir?` in ${dir}`:'')
+      : 'the items you ticked have no rows');
   };
 }
 

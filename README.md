@@ -174,8 +174,40 @@ the coverage strip and the QC verdict. Use **hide samples with no calls** to put
 rows away.
 
 **FluMut markers**, **SNPGenie diversity layers**, **WFABC selection results**, and
-**export** to CSV, TSV, TXT, JSON, Markdown, or VCF. Each file has a header that
-records the filters that made it.
+**export** to CSV, TSV, TXT, JSON, Markdown, VCF, or FASTA.
+
+**Export writes any item, and not only the open view.** The export dialog lists every
+item in the run. Tick the items you want. FluLens writes one file for each item. The
+dialog greys out an item the run does not have, and gives the reason.
+
+| Item | File types | What it holds |
+| --- | --- | --- |
+| Variant calls | table, VCF | One row per call, with 17 columns |
+| Consensus residues | table | Each codon where a sample differs from the reference |
+| Consensus proteins | FASTA | One record per sample and product, in amino acids |
+| Consensus calls, nucleotide | table, VCF | The call that made each consensus codon |
+| Consensus segments, nucleotide | FASTA | One record per sample and segment |
+| IRMA consensus changes | table | The residues where IRMA differs from the reference |
+| IRMA consensus proteins | FASTA | One record per frame IRMA placed |
+| Sample summary and QC | table | The QC verdict, its inputs, and the metadata |
+
+**Each item picks its own file type.** The menu beside an item gives the types that
+item can write. `table` means CSV, TSV, TXT, JSON, or Markdown. The two call items also
+give VCF 4.2, because they have a REF and an ALT to write. FluLens keeps your choice for
+the session.
+
+Set **scope** to `as shown` to write the filters, the sample order and the hidden
+products of the display. Set **scope** to `everything` to write the full run. Each file
+has a header with the scope and the filters that made it. A FASTA file carries the same
+header in leading `;` lines, and repeats the facts in each defline.
+
+**A consensus FASTA is the reference plus the calls above 50%.** A product or a segment
+that did not assemble therefore comes out as the reference. Read `changes=` on each
+record. The IRMA proteins do not have this problem, because IRMA states a residue only
+where it placed a contig.
+
+**The desktop app writes a folder.** It asks for a folder one time. Then it writes all
+the files into that folder. The browser version downloads the files one at a time.
 
 ---
 
