@@ -64,7 +64,7 @@ examples — one from each supported pipeline.
 
 ### Flumina example (Illumina)
 
-`example_run/` — twelve samples, 1,378 calls, all twelve gene products.
+`example_run/` — a synthetic Flumina run.
 
 **[▶ Open it live](https://flu-crew.github.io/FluLens/?run=example_run)**
 
@@ -74,15 +74,12 @@ examples — one from each supported pipeline.
 | [`example_run.zip`](https://github.com/flu-crew/FluLens/releases/latest) | attached to every release |
 | [Download the whole repository](https://github.com/flu-crew/FluLens/archive/refs/heads/main.zip) | `example_run/` is inside it |
 
-The example gives the controls something to act on. It contains a library that
-fails QC, two segments that did not assemble, GATK4 genotype calls with no LoFreq
-counterpart, and skewed strand balance on some of the calls. All twelve samples
-include reads, so the pile-up opens on the example. `example_run/README.md`
-explains the design.
+The example exercises every control, and it includes reads, so the pile-up opens on it.
+`example_run/README.md` describes the design.
 
 ### FluPore example (Nanopore)
 
-`example_run_nanopore/` — five samples, single-end ONT reads at ~60–80× depth.
+`example_run_nanopore/` — a synthetic FluPore run, with single-end ONT reads.
 
 **[▶ Open it live](https://flu-crew.github.io/FluLens/?run=example_run_nanopore)**
 
@@ -114,7 +111,7 @@ FluLens found:
 |---|---|
 | `variant_analysis/all_sample_amino_acids.txt` | **required** — the grid itself |
 | `reference.fa` | the translated reference row |
-| `reference_gtf/*.gtf` | true protein lengths and CDS intervals, so all twelve products appear |
+| `reference_gtf/*.gtf` | true protein lengths and CDS intervals, so every gene product appears |
 | `variant_analysis/curated_amino_acids.txt` | ▲ ticks marking curated sites |
 | `variant_analysis/flumut/markers.tsv` | FluMut marker screening |
 | `variant_analysis/flumut_lowfreq/` | markers present *below* consensus |
@@ -148,23 +145,33 @@ the strand balance against the *reference* allele, and a verdict.
 **Variant assessment.** There are four verdicts — *Looks real*, *Treat with caution*,
 *Likely artefact*, and *Cannot assess*. Each verdict lists its reasons. It weighs strand
 balance, depth, allele frequency, and the number of reads that support the
-call. Supporting reads are not the same as depth: a 0.5% call on 15,000× has high depth
-but may rest on only a few alt reads. A fixed call, with almost no reference reads, is
-*not* penalised on strand balance, because there is no reference allele to compare it
-against. Recent Flumina writes the verdict into the variant table (an `assessment`
+call. Supporting reads are not the same as depth: a call at a very low frequency can sit
+on high depth and still rest on few alt reads. A fixed call, with almost no reference
+reads, is *not* penalised on strand balance, because there is no reference allele to
+compare it against. Recent Flumina writes the verdict into the variant table (an `assessment`
 column) and FluLens reads it from there, so the two always agree; without that column
 FluLens derives the same verdict from the per-sample VCFs.
 
 **Consensus view.** It shows each sample's own residue at every codon. It draws only the
 differences from the reference, not a full field of colour.
 
-(Details of an unpublished run were removed here.)
+**Coverage strip.** It shows the reads recovered per segment, per sample. The variant
+table cannot show you how many reads a segment recovered. This strip can.
 
+**QC column.** It gives a per-sample verdict. The verdict does not change with your
+filters, because QC is a fact about the library and not about the view. Click the mark to
+override it.
 
+Four rules make the verdict: the number of calls, their median depth, the fraction of
+them below the run's depth floor, and the number of segments that IRMA recovered. A
+slider in the sidebar sets each rule. The segment rule needs
+`IRMA_results/<sample>/tables/READ_COUNTS.txt`, and FluLens skips it if the run has no
+read counts.
 
-**QC column.** It gives a per-sample verdict from the raw variant table. The verdict does
-not change with your filters, because QC is a fact about the library and not
-about the view. Click the mark to override it.
+**Samples with no calls also get a row.** A sample can have no row in the variant table.
+FluLens finds it in the run's per-sample directories and shows it as an empty row, with
+the coverage strip and the QC verdict. Use **hide samples with no calls** to put these
+rows away.
 
 **FluMut markers**, **SNPGenie diversity layers**, **WFABC selection results**, and
 **export** to CSV, TSV, TXT, JSON, Markdown, or VCF. Each file has a header that
@@ -172,43 +179,30 @@ records the filters that made it.
 
 ---
 
-## Things to know before you trust a number
+## How to read the display
 
-These are properties of the data, not of this viewer. You cannot see them
-in the tables themselves.
+**The first view is filtered.** FluLens sets the depth, frequency and alt-read sliders
+from the values in the run's `config.cfg`, and the `nonsynonymous only` control is on.
+The sidebar gives the count of the calls on screen. Click **Reset filters** to show every
+call in the table.
 
-(Details of an unpublished run were removed here.)
+**The assessment thresholds are fixed. They are not the sidebar sliders.** The sliders
+change which calls you see. They never change a verdict. The panel shows where a call
+sits against your current filters, and the verdict stays the same.
 
+**LoFreq and GATK4 do not report the same quantity.** LoFreq gives an allele *fraction*.
+GATK4 gives a *genotype*. FluLens reconciles the two at load. It gives a GATK4 row
+LoFreq's fraction where both callers found the same change, and marks the rest as
+genotypes. The consensus view leaves out genotype-only calls.
 
+**Each caller writes its own row for the same change.** The table therefore holds more
+than one row per variant at most sites. Use the caller checkboxes to show one caller at a
+time.
 
-
-
-
-
-**Both callers emit a row for the same change**, so the table has two rows per
-variant at most sites. To count calls per codon, first remove the duplicates by
-position and alternative.
-
-**FluMut's HA and NA markers use H5/N1 numbering.** `HA1-5` means H5 HA1 numbering
-and `NA-1` means N1 NA numbering. So on an H3N2 run, those positions use the wrong
-numbering. The internal genes — PB2, PB1, PA, NP, and NS — do not depend on subtype and
-are correct. FluLens finds the subtype from the reference segment
-names. It marks the HA and NA findings that it cannot confirm. A bare `A_HA` with no
-subtype suffix counts as unconfirmable, not as a pass.
-
-**Depth below 100 makes false fixed differences.** With low template input, both callers
-report false fixed differences. This is why Flumina defaults to `min_depth 100` and
-FluPore to `min_depth 20`, and why FluLens downgrades any verdict below the run's own
-floor.
-
-**The assessment thresholds are absolute. They are not the sidebar sliders.** If they were
-the sliders, a slider would change the verdict that the same slider then filters on. The
-panel shows where a call sits against your current filters, but the filters do not change
-the verdict.
-
-(Details of an unpublished run were removed here.)
-
-
+**FluMut HA and NA markers use H5/N1 numbering.** `HA1-5` means H5 HA1 numbering and
+`NA-1` means N1 NA numbering. FluLens reads the subtype from the reference segment names
+and marks every HA or NA marker that it cannot confirm. A bare `A_HA` with no subtype
+suffix counts as unconfirmed. The internal genes do not depend on the subtype.
 
 ---
 

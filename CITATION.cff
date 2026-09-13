@@ -1,14 +1,15 @@
-# Confirm before the first release: affiliation, ORCID, and the co-author list.
-# Once the repo is pushed and the Zenodo integration is switched on, Zenodo mints
-# a DOI on each GitHub release — add it under `doi:` and to the README badge.
+# Set `version` and `date-released` at each release, and add the Zenodo `doi:`
+# once the integration mints one. Affiliation, ORCID and co-authors are still to
+# confirm.
 cff-version: 1.2.0
 message: "If you use FluLens in published work, please cite it as below."
 title: FluLens
 abstract: >-
-  A viewer and reviewer for influenza variant calls produced by the Flumina
-  pipeline. Displays a run as samples by codons, one cell per call, coloured by
-  allele frequency, with per-variant read-level evidence, strand-bias
-  assessment, FluMut marker screening and selection results.
+  A viewer and reviewer for influenza variant calls. It reads the output of the
+  Flumina (Illumina) and FluPore (Nanopore) pipelines. It shows a run as samples
+  by codons, one cell per call, coloured by allele frequency. It adds
+  per-variant read-level evidence, strand-bias assessment, FluMut marker
+  screening, nucleotide diversity and selection results.
 type: software
 authors:
   - family-names: Hutter

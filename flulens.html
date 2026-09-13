@@ -973,6 +973,9 @@ the changed base's colour.</div>
       <div class="fld"><span>max low-depth</span>
         <input type="range" id="qlow" min="0" max="100" step="5" value="25">
         <span class="val" id="vqlow">25%</span></div>
+      <div class="fld"><span>segments</span>
+        <input type="range" id="qsegs" min="0" max="8" step="1" value="8">
+        <span class="val" id="vqsegs">8</span></div>
       <div class="fld" style="margin-top:7px"><label><input type="checkbox" id="hideempty">
         hide samples with no calls</label></div>
       <div class="fld"><label><input type="checkbox" id="hidefail">
@@ -1448,10 +1451,44 @@ let sortKeys=[], manualOrder=null, hideEmpty=false, hideFail=false;
 /* Per-sample QC. `qcAuto` is computed from the current filter; `qcManual`
    is the reviewer's override and always wins. Screening a cohort is the point
    of the column, so the override has to be one click and has to persist. */
-let qcRules={minCalls:1,minMedDepth:200,maxLowFrac:0.25};
+/* Multiplier on the run's MIN_DEPTH for the QC median-depth rule.
+
+   1 means the rule sits ON the pipeline's own floor, where it cannot fire: the
+   table holds only calls that already cleared MIN_DEPTH, so `median >= floor`
+   restates what the pipeline guaranteed. That is deliberate. The column does
+   NOT depend on this rule any more — segments recovered comes from IRMA's read
+   counts, which the floor cannot reach, and samples with no calls at all now
+   have rows of their own. Between them the verdict does real work at 1x, and
+   anything above 1x would be a threshold invented here rather than read from
+   the run.
+
+   Every other threshold in this file has a source: a config key, a caller's
+   reporting floor, or a measured distribution. This one would have none, so it
+   defaults to the value that asserts nothing. The slider is the place to tighten
+   it, per session, by someone looking at the cohort.
+
+   (Details of an unpublished run were removed here.)
+
+
+     (Details of an unpublished run were removed here.)
+
+
+
+ */
+const QC_DEPTH_FACTOR=1;
+/* minSegs is the one rule that does NOT come from the variant table. Influenza A
+   has eight segments; a library that recovered seven cannot support a
+   whole-genome comparison however deep the seven are, and the variant table
+   cannot say so — a segment that assembled nothing simply has no rows. Read
+   from IRMA's READ_COUNTS, and skipped entirely on a run that has none. */
+let qcRules={minCalls:1,minMedDepth:200,maxLowFrac:0.25,minSegs:8};
 let qcAuto=null, qcStat=[], qcManual=new Map();
 const QC_W=26;
 let metaCols=[], meta=new Map(), metaShow=[];
+/* Table columns that LOOKED like metadata and were rejected because they vary
+   within a sample. Reported in the sidebar, so a new pipeline column shows up
+   as a named exclusion rather than as silence. */
+let metaDropped=[];
 /* Where the metadata came from, so the picker can say so. Held as state rather
    than written into the DOM once, because renderMetaPicker() runs again on
    every run load and would otherwise wipe a note inserted after it. */
@@ -1503,6 +1540,45 @@ function findFile(...cands){
   for(const c of cands){ if(files.has(c)) return files.get(c); }
   for(const [p,f] of files) for(const c of cands) if(p.endsWith(c)) return f;
   return null;
+}
+/* Every sample the RUN holds, read from the per-sample directory names rather
+   than from the variant table. The three loaders all build `files` the same
+   way, so this serves the picker, devBootstrap and the Tauri shell alike.
+
+   The suffix on the directory name is deliberate: a run may carry vcf_files/
+   and vcf_files_merged/ together, exactly as findVCF allows for. */
+const SAMPLE_DIR=/^(?:vcf_files|BAM_files|IRMA_results)[^/]*\/([^/]+)\//;
+function runSampleDirs(){
+  const out=new Set();
+  for(const p of files.keys()){
+    const m=SAMPLE_DIR.exec(p);
+    // A dot means a file sitting directly in the parent, not a sample folder.
+    if(m && m[1] && !m[1].includes('.')) out.add(m[1]);
+  }
+  return out;
+}
+/* (Details of an unpublished run were removed here.)
+
+
+
+
+
+   Nothing else needs changing to make this work. An empty row scores calls 0,
+   median depth 0 and low-depth fraction 1, so computeQC fails it on its own
+   terms; `hide samples with no calls` and `hide failing samples` already filter
+   on exactly those two facts; and both start unchecked on every load, so the
+   reader sees the whole run first and chooses what to put away.
+
+   The question FluLens exists to answer — is this sample good enough to keep —
+   is the one these samples answer, so they are the last rows that should be
+   silently absent. */
+function addSamplesWithoutCalls(){
+  const have=new Set(names);
+  const extra=[...runSampleDirs()].filter(s=>!have.has(s))
+                                  .sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}));
+  for(const s of extra) names.push(s);
+  NT=names.length;
+  return extra;
 }
 function findAll(re){
   const out=[]; for(const [p,f] of files) if(re.test(p)) out.push([p,f]); return out;
@@ -1703,11 +1779,20 @@ async function readWFABC(){
 }
 // Which metadata column holds the animal? Whichever one's values actually match
 // the animals WFABC reported — verified by overlap, not by guessing a name.
+/* Treat R's "NA" as missing, not as a value. write.table spells an absent cell
+   "NA", and a sample the pipeline's metadata join missed carries it in every
+   column — one such sample is enough to defeat a test that reads it literally. */
+const metaMissing=v=>{ const t=String(v==null?'':v).trim();
+  return t===''||t==='NA'||t==='NaN'; };
+const metaVal=(m,c)=>{ const v=m[c]; return metaMissing(v)?'':String(v).trim(); };
+
 function pickAnimalCol(animals){
+  // The config's answer first, when the table actually carries that column.
+  if(runIndivCol && metaCols.includes(runIndivCol)) return runIndivCol;
   let best=null,bn=0;
   for(const c of metaCols){
     let n=0;
-    for(const [,m] of meta) if(animals.has(String(m[c]==null?'':m[c]).trim())) n++;
+    for(const [,m] of meta) if(animals.has(metaVal(m,c))) n++;
     if(n>bn){ bn=n; best=c; }
   }
   return bn?best:null;
@@ -1723,11 +1808,15 @@ function pickAnimalCol(animals){
 const NUMERIC_RE=/^-?\d+(\.\d+)?$/;
 function looksTimeSeries(){
   if(!metaCols.length||!meta.size) return null;      // cannot tell
+  // Stated by the config, when both columns are in the table. No scoring needed.
+  if(runIndivCol && runTimeCol &&
+     metaCols.includes(runIndivCol) && metaCols.includes(runTimeCol))
+    return {individual:runIndivCol, time:runTimeCol};
   let best=null, bestScore=0;
   for(const idc of metaCols){
     const groups=new Map();
     for(const [,m] of meta){
-      const k=String(m[idc]==null?'':m[idc]).trim(); if(!k) continue;
+      const k=metaVal(m,idc); if(!k) continue;
       if(!groups.has(k)) groups.set(k,[]); groups.get(k).push(m);
     }
     if(groups.size<2||groups.size>=meta.size) continue;
@@ -1735,7 +1824,13 @@ function looksTimeSeries(){
       if(tc===idc) continue;
       let score=0, ok=true;
       for(const [,ms] of groups){
-        const vals=[...new Set(ms.map(m=>String(m[tc]==null?'':m[tc]).trim()).filter(Boolean))];
+        /* (Details of an unpublished run were removed here.)
+
+
+
+
+ */
+        const vals=[...new Set(ms.map(m=>metaVal(m,tc)).filter(Boolean))];
         if(!vals.length) continue;
         if(!vals.every(v=>NUMERIC_RE.test(v))){ ok=false; break; }
         if(vals.length>=2) score++;
@@ -1968,11 +2063,27 @@ function parseAA(text, gtfLens){
        silently becomes a sortable per-sample field holding the first row's
        value — wrong, and wrong in a way that looks like a working feature. */
     'variant_id','af_type','allele_fraction','ivar_pass','af_conflict','gatk_filter',
-    'alt_reads','strand_class','assessment']);
-  metaCols=head.filter(h=>h&&!KNOWN.has(h));
-  // Reset per run: these columns arrived with the table, not from a file the
-  // user chose, and carrying a previous run's filename over would be a lie.
-  metaSource = metaCols.length ? {file:null} : null;
+    'alt_reads','strand_class','assessment',
+    /* Flumina 2.1.0. Both are per-variant. indel_source in particular must be
+       named here and cannot be left to the constancy test below: on the swine
+       run it reads "TRUE" on every row of every sample, so it is constant within
+       a sample by accident and the test has no grounds to reject it. The list
+       catches the columns we know; the test catches the ones we do not. */
+    'dist_to_indel','indel_source']);
+  /* KNOWN is the fast path, not the whole test. A deny-list is defeated by the
+     next pipeline release — Flumina 2.1.0 added dist_to_indel and indel_source,
+     both PER-VARIANT, and both arrived here as per-sample metadata holding
+     whatever the sample's first row happened to say.
+
+     So the list only proposes candidates. What settles it is the definition:
+     metadata is one value per SAMPLE, therefore a metadata column is constant
+     within every sample. A column that varies row to row inside one sample is
+     pipeline output whatever it is called. Verified below, over the same pass
+     that fills the rows. */
+  const metaCand=head.filter(h=>h&&!KNOWN.has(h));
+  const metaVaries=new Set();
+  // Column index once, not head.indexOf() per candidate per row.
+  const metaIx=new Map(metaCand.map(c=>[c,head.indexOf(c)]));
   meta=new Map(); metaShow=[];
 
   const hasProduct = C.product>=0;
@@ -2038,9 +2149,18 @@ function parseAA(text, gtfLens){
     let ri=sampleIx.get(f[C.sample]);
     if(ri===undefined){
       ri=names.length; sampleIx.set(f[C.sample],ri); names.push(f[C.sample]);
-      if(metaCols.length){
-        const m={}; for(const mc of metaCols){ const j=head.indexOf(mc); m[mc]=j>=0?f[j]:''; }
+      if(metaCand.length){
+        const m={}; for(const mc of metaCand){ const j=metaIx.get(mc); m[mc]=j>=0?f[j]:''; }
         meta.set(f[C.sample],m);
+      }
+    } else if(metaCand.length){
+      // Every later row for a sample it has already seen: any candidate that
+      // disagrees with the first row is per-variant, not per-sample.
+      const m=meta.get(f[C.sample]);
+      for(const mc of metaCand){
+        if(metaVaries.has(mc)) continue;
+        const j=metaIx.get(mc);
+        if((j>=0?f[j]:'')!==m[mc]) metaVaries.add(mc);
       }
     }
     A.row.push(ri); A.col.push(rec.off+r.ap-1);
@@ -2065,6 +2185,18 @@ function parseAA(text, gtfLens){
     A.assessStated.push(C.assessCol>=0?(ASSESS_CODE[f[C.assessCol]]??255):255);
     A.altStated.push(C.altReadsCol>=0&&f[C.altReadsCol]!==''&&f[C.altReadsCol]!=='NA'?(+f[C.altReadsCol]):-1);
   }
+  /* Settle the metadata columns now that every row has been seen. Anything that
+     varied within a sample is pipeline output and is dropped from the picker,
+     the sort keys and the WFABC/time-series column search — all three of which
+     would otherwise offer it as a per-sample fact. The values stay out of `meta`
+     too, so nothing downstream can read one by name. */
+  metaCols=metaCand.filter(c=>!metaVaries.has(c));
+  metaDropped=[...metaVaries];
+  if(metaVaries.size) for(const [,m] of meta) for(const c of metaVaries) delete m[c];
+  // Reset per run: these columns arrived with the table, not from a file the
+  // user chose, and carrying a previous run's filename over would be a lie.
+  metaSource = metaCols.length ? {file:null} : null;
+
   const n=A.row.length;
   V={n, row:Int32Array.from(A.row), col:Int32Array.from(A.col),
      freq:Float32Array.from(A.freq), depth:Float32Array.from(A.depth),
@@ -2106,11 +2238,32 @@ function parseAA(text, gtfLens){
        for 293 codons. Guarding on has() is what makes it once. */
     if(!s.has(key)){ s.add(key); if(s.size===2) multi++; }
   }
+  /* The depth and fixation counts are NOT computed here. Both of their inputs
+     are still wrong at this point in the load: V.freq holds raw GATK4 genotypes
+     until reconcileFrequencies() rewrites them, and AS_MIN_DEPTH is still the
+     previous run's floor until loadRunThresholds() reads this run's config.
+     See countDepthStats(), called from loadRun once both have run. */
   stats={raw, placed:n, multi, hasProduct, outOfOrf,
          lowdepth:0, fix:0, fixLow:0};
-  for(let i=0;i<n;i++){
-    if(V.depth[i]<AS_MIN_DEPTH) stats.lowdepth++;
-    if(V.freq[i]>0.9){ stats.fix++; if(V.depth[i]<AS_MIN_DEPTH) stats.fixLow++; }
+}
+
+/* Calls below the run's depth floor, and calls at consensus. Split out of
+   parseAA because it must run AFTER reconcileFrequencies() and
+   loadRunThresholds(), not before.
+
+   (Details of an unpublished run were removed here.)
+
+
+
+
+ */
+function countDepthStats(){
+  if(!stats||!V) return;
+  stats.lowdepth=0; stats.fix=0; stats.fixLow=0;
+  for(let i=0;i<V.n;i++){
+    const low=V.depth[i]<AS_MIN_DEPTH;
+    if(low) stats.lowdepth++;
+    if(V.freq[i]>0.9){ stats.fix++; if(low) stats.fixLow++; }
   }
 }
 
@@ -2350,16 +2503,36 @@ async function loadSegCounts(sample){
   const f=findReadCounts(sample);
   if(!f){ segCache.set(sample,null); return null; }
   const rec={byLoc:new Map(), match:0, nomatch:0};
+  /* TWO formats, because the two pipelines write different tables and reading
+     only the first one left the coverage strip empty on every ONT run — it
+     reported "IRMA read counts for 5 of 5 samples" and then had nothing to draw.
+
+       Flumina / IRMA    Record    Reads ...      FluPore    Record  Count
+                         3-match   1021351                   total   4378
+                         3-nomatch 20427                      mapped  4159
+                         4-A_HA    18002                      A_HA    568
+
+     So a segment row is "4-<SEG>" in one and a bare "<SEG>" in the other.
+     Matching on SEG_ORDER membership rather than on the prefix settles both
+     without guessing: 1-initial, 2-passQC and the header are not segments and
+     cannot be mistaken for one. */
+  const segKey=raw=>{ const k=shortLocus(raw); return SEG_ORDER.includes(k)?k:null; };
+  let total=0;
   try{
     for(const line of (await f.text()).split(/\r?\n/)){
       const c=line.split('\t'); if(c.length<2) continue;
       const v=+c[1];
-      if(c[0]==='3-match') rec.match=v||0;
+      if(c[0]==='3-match'||c[0]==='mapped') rec.match=v||0;
       else if(c[0]==='3-nomatch') rec.nomatch=v||0;
-      // "4-A_HA_H3" is this segment's assigned reads. shortLocus strips the
-      // subtype suffix, so the key matches SEG_ORDER on any reference.
-      else if(c[0].startsWith('4-')) rec.byLoc.set(shortLocus(c[0].slice(2)), v||0);
+      else if(c[0]==='total') total=v||0;
+      else {
+        const k=segKey(c[0].replace(/^4-/,''));
+        if(k) rec.byLoc.set(k, v||0);
+      }
     }
+    /* FluPore states total and mapped; IRMA states match and nomatch. The strip
+       wants the unassigned count either way, and one subtraction gives it. */
+    if(total&&!rec.nomatch) rec.nomatch=Math.max(0,total-rec.match);
   }catch(e){ segCache.set(sample,null); return null; }
   segCache.set(sample,rec);
   return rec;
@@ -2375,6 +2548,17 @@ function pumpSeg(){
     const s=segQueue.shift(); segBusy++;
     loadSegCounts(s).finally(()=>{ segBusy--; schedule(); pumpSeg(); });
   }
+}
+/* Every sample's read counts, before the first computeQC rather than as rows
+   scroll into view. QC needs them and QC must not move: filling segCache from
+   the draw loop would let a sample's verdict change the moment its row was
+   painted, which is the same "measured through the lens you are looking with"
+   fault computeQC already guards against. The files are a few hundred bytes and
+   the first fit() makes every row visible anyway, so this costs nothing that
+   was not about to be spent. Six at a time, as pumpSeg does. */
+async function loadAllSegCounts(){
+  for(let i=0;i<names.length;i+=6)
+    await Promise.all(names.slice(i,i+6).map(n=>loadSegCounts(n).catch(()=>null)));
 }
 const segRecovered=rec=>{ let n=0; if(rec) for(const [,v] of rec.byLoc) if(v>0) n++; return n; };
 
@@ -2676,6 +2860,10 @@ async function loadDepth(sample){
    a floor the run never declared. The assessment always has a floor: the AS_*
    defaults. */
 let runMinDepth=null, runMinAlt=null, runMinFreq=null, runThreshTried=false, runStrandBias=true, runBaseline=null;
+/* The study design as the run's config states it: which metadata column holds
+   the individual, and which holds the time point. Null when the config is
+   absent or does not name them, in which case the heuristics below still run. */
+let runIndivCol=null, runTimeCol=null;
 async function loadRunThresholds(){
   if(runThreshTried) return runMinDepth;
   runThreshTried=true;
@@ -2690,6 +2878,18 @@ async function loadRunThresholds(){
     if(d !==null){ runMinDepth=d; AS_MIN_DEPTH=d; }
     if(fr!==null){ runMinFreq=fr; AS_MIN_FREQ=fr; }
     if(a !==null){ runMinAlt=a; AS_MIN_ALT=a; }
+    /* The study design, STATED rather than inferred. WFABC needs to know which
+       metadata column holds the individual and which holds the time point, and
+       this app used to work both out by scoring the metadata — an overlap test
+       for the individual, a numeric-and-varying test for the time axis.
+
+       The config says it outright, and the same argument applies as for af_type
+       and assessment: the pipeline knows, so read it. The heuristics stay as the
+       fallback for a run with no config, and for a config that names a column
+       the table does not carry. */
+    const str=re=>{ const m=re.exec(txt); return m?m[1].trim():null; };
+    runIndivCol=str(/^\s*INDIVIDUAL_COLUMN\s*=\s*"?([^"\n#]+?)"?\s*$/m);
+    runTimeCol =str(/^\s*TIME_COLUMN\s*=\s*"?([^"\n#]+?)"?\s*$/m);
     // FluPore writes MIN_FREQ; Flumina writes MIN_ALLELE_FREQUENCY. Nanopore
     // reads have inherent strand bias from ligation prep, so the strand-skew
     // artefact detector is disabled for ONT runs.
@@ -3066,6 +3266,9 @@ async function loadRun(){
     const aaText=await aaF.text();
     await phase('parsing the variant table');
     parseAA(aaText, gtf?gtf.lens:null);
+    // Before anything sizes an NT*NC grid — applyFilters, buildConsensus and the
+    // IRMA arrays all allocate from NT and would be short by these rows.
+    const noCallSamples=addSamplesWithoutCalls();
     /* (Details of an unpublished run were removed here.)
 
 
@@ -3103,7 +3306,10 @@ async function loadRun(){
     const w=await readWFABC();
     wfabcState=w.state;
     wfabc = w.state==='ok' ? w : null;
-    wfabcAnimalCol = wfabc ? pickAnimalCol(wfabc.animals) : null;
+    // wfabcAnimalCol is NOT settled here. pickAnimalCol now prefers the config's
+    // INDIVIDUAL_COLUMN, and loadRunThresholds has not read the config yet — it
+    // runs below, with the rest of the per-run floors. Assigned there instead.
+    wfabcAnimalCol = null;
 
     let nCur=0;
     const curF=findFile('variant_analysis/curated_amino_acids.txt');
@@ -3190,7 +3396,21 @@ async function loadRun(){
       (segState==='ok'
         ? `<span class="ok">✓</span> IRMA read counts for ${nSeg} of ${NT} samples\n`+
           `   cover: reads per segment, by decade — 8 cells, gene order\n`
-        : `<span class="warn">·</span> no IRMA read counts — no assembly strip\n`);
+        : `<span class="warn">·</span> no IRMA read counts — no assembly strip\n`)+
+      /* (Details of an unpublished run were removed here.)
+
+ */
+      (noCallSamples.length
+        ? `<span class="warn">!</span> ${noCallSamples.length} samples in the run with no calls\n`+
+          `   shown as empty rows — every call fell below the depth floor\n`
+        : '')+
+      /* A table column that looked like metadata and was rejected for varying
+         within a sample. Named, because the alternative is that a new pipeline
+         column disappears from the picker with no explanation. */
+      (metaDropped.length
+        ? `<span class="ok">✓</span> ${metaDropped.length} per-variant column${metaDropped.length===1?'':'s'} `+
+          `kept out of metadata\n   ${metaDropped.join(', ')}\n`
+        : '');
 
     document.getElementById('prodsrc').textContent =
       extentSource + (gtfDirNote ? ` · ${gtfDirNote}` : '');
@@ -3211,6 +3431,7 @@ async function loadRun(){
     // threshold, which is worse than not flagging them at all. The assessment
     // floors reset to their defaults too, or run B inherits run A's config.
     visDepthCache=new Map(); runMinDepth=null; runMinAlt=null; runMinFreq=null;
+    runIndivCol=null; runTimeCol=null;
     runThreshTried=false; runStrandBias=true; runBaseline=null;
     AS_MIN_DEPTH=AS_DEF_DEPTH; AS_MIN_FREQ=AS_DEF_FREQ; AS_MIN_ALT=AS_DEF_ALT;
     /* The IRMA grids are sized NT*NC and keyed by this run's row order, so
@@ -3241,15 +3462,31 @@ async function loadRun(){
       minAlt=runMinAlt;
     }
     if(runMinFreq!==null){
-      const pct=Math.round(runMinFreq*100);
+      /* FLOOR, not round. The slider is whole percent, and rounding a floor UP
+         hides calls the pipeline chose to keep — MIN_ALLELE_FREQUENCY=0.005
+         would open the view at 1% and drop everything between. Rounding down
+         shows a little more than the floor, which is the safe direction. */
+      const pct=Math.max(0,Math.floor(runMinFreq*100));
       document.getElementById('ffreq').value=pct;
       document.getElementById('vfreq').textContent=pct+'%';
     }
     if(runMinDepth!==null){
-      qcRules.minMedDepth=runMinDepth;
-      document.getElementById('qdepth').value=runMinDepth;
-      document.getElementById('vqdepth').textContent=runMinDepth;
+      /* At QC_DEPTH_FACTOR 1 this rule is inert by construction — computeQC
+         takes the median of the calls in the table and the pipeline only WRITES
+         calls that already cleared MIN_DEPTH. It stays because it is the honest
+         starting point and the slider is where a reader tightens it; the verdict
+         does not rest on it. minSegs and the no-call rows are what make the
+         column mean something. See QC_DEPTH_FACTOR for what moving it costs. */
+      qcRules.minMedDepth=runMinDepth*QC_DEPTH_FACTOR;
+      document.getElementById('qdepth').value=qcRules.minMedDepth;
+      document.getElementById('vqdepth').textContent=qcRules.minMedDepth;
     }
+    /* Both inputs are correct only now: reconcileFrequencies() has rewritten the
+       borrowed GATK4 fractions and loadRunThresholds() has set this run's floor. */
+    countDepthStats();
+    // The config has been read, so INDIVIDUAL_COLUMN can win over the heuristic.
+    wfabcAnimalCol = wfabc ? pickAnimalCol(wfabc.animals) : null;
+    if(segState==='ok') await loadAllSegCounts();
     hideEmpty=false; document.getElementById('hideempty').checked=false;
     hideFail=false;  document.getElementById('hidefail').checked=false;
     runBaseline=currentState();
@@ -3285,8 +3522,12 @@ function renderNotes(){
   }
   L.push(`\n${stats.multi} multi-variant codons`);
   L.push(`${stats.lowdepth} calls below depth ${AS_MIN_DEPTH}`);
-  L.push(`${stats.fixLow} of ${stats.fix} calls >90% are`);
-  L.push(`  below depth ${AS_MIN_DEPTH}`);
+  // Only when there are any. "0 of 0 calls >90% are below depth 20" is a
+  // sentence about nothing, and it sat on the nanopore example for weeks.
+  if(stats.fix){
+    L.push(`${stats.fixLow} of ${stats.fix} calls >90% are`);
+    L.push(`  below depth ${AS_MIN_DEPTH}`);
+  }
   document.getElementById('notes').innerHTML=L.join('\n');
 }
 
@@ -3373,9 +3614,16 @@ function computeQC(){
     const d=depths[sm]; d.sort((a,b)=>a-b);
     const med=d.length?d[d.length>>1]:0;
     const low=d.length?d.filter(x=>x<AS_MIN_DEPTH).length/d.length:1;
-    qcStat[sm]={calls:d.length, med, low, prods:0};
+    /* Segments recovered, from IRMA's own read counts rather than from the
+       calls. null means the run ships no READ_COUNTS, and a rule with no
+       evidence behind it must not fail anything — the same "absence of evidence"
+       rule the IRMA verdict and the FIT test follow. */
+    const segRecord=segCache.get(names[sm]);
+    const segRec=segRecord ? segRecovered(segRecord) : null;
+    qcStat[sm]={calls:d.length, med, low, prods:0, segs:segRec};
     qcAuto[sm]=(d.length>=qcRules.minCalls && med>=qcRules.minMedDepth
-                && low<=qcRules.maxLowFrac)?1:0;
+                && low<=qcRules.maxLowFrac
+                && (segRec===null || segRec>=qcRules.minSegs))?1:0;
   }
   // count distinct products per sample (a shallow library often loses whole segments)
   const seen=new Set();
@@ -3567,7 +3815,8 @@ document.getElementById('hidefail').addEventListener('change',e=>{
 for(const [id,vid,fmt,set] of [
     ['qcalls','vqcalls',v=>v,      v=>qcRules.minCalls=+v],
     ['qdepth','vqdepth',v=>v,      v=>qcRules.minMedDepth=+v],
-    ['qlow',  'vqlow',  v=>v+'%',  v=>qcRules.maxLowFrac=+v/100]])
+    ['qlow',  'vqlow',  v=>v+'%',  v=>qcRules.maxLowFrac=+v/100],
+    ['qsegs', 'vqsegs', v=>v,      v=>qcRules.minSegs=+v]])
   document.getElementById(id).addEventListener('input',e=>{
     set(e.target.value); document.getElementById(vid).textContent=fmt(e.target.value);
     savePresetState(); if(ready){ rebuildRowOrder(); schedule(); } });
@@ -3895,6 +4144,7 @@ function applyState(st){
   g('qdepth').value=qcRules.minMedDepth; g('vqdepth').textContent=qcRules.minMedDepth;
   g('qlow').value=Math.round(qcRules.maxLowFrac*100);
   g('vqlow').textContent=Math.round(qcRules.maxLowFrac*100)+'%';
+  g('qsegs').value=qcRules.minSegs;      g('vqsegs').textContent=qcRules.minSegs;
   sortKeys=(st.sort||[]).map(k=>({...k})); manualOrder=null;
   if(st.qcManual) qcManual=new Map(st.qcManual);
   /* Absent means "take the defaults", so an older preset leaves every column at
@@ -5681,7 +5931,14 @@ function syncConsControls(){
     : irmaStats
       ? `${irmaStats.frames.toLocaleString()} sample × product frames · `+
         `${irmaStats.residues.toLocaleString()} stated residues. Grey means IRMA placed `+
-        `nothing there — not agreement. Depth is IRMA's own coverage, not the BWA pileup.`
+        `nothing there — not agreement. Depth is IRMA's own coverage, not the BWA pileup.`+
+        /* (Details of an unpublished run were removed here.)
+
+
+ */
+        (irmaStats.unmatched
+          ? ` <span class="warn">${irmaStats.unmatched.toLocaleString()} IRMA rows `+
+            `matched no sample or product here and were not read.</span>` : '')
       : '';
 }
 
@@ -7261,7 +7518,11 @@ function draw(){
     (viewMode==='selection'
       // "reading codon table…" rather than a count, because 0 codons and
       // not-loaded-yet are different states that would otherwise look the same.
-      ? (snpCells ? `${snpStats.cells.toLocaleString()} codons with diversity`
+      ? (snpCells ? `${snpStats.cells.toLocaleString()} codons with diversity`+
+                    // Same rule as the IRMA note: a row the grid could not place
+                    // is a dropped row and has to be visible as one.
+                    (snpStats.unmatched
+                      ? ` · ${snpStats.unmatched.toLocaleString()} unmatched` : '')
                   : (snpState==='norun'||snpState==='nofile'
                        ? 'no SNPGenie results' : 'reading codon table…'))
       : viewMode==='reads'
@@ -7420,17 +7681,20 @@ function subtypeNote(){
      the count read zero while ten sat in the lists), but the rule stands: the
      two indexes answer different questions and the sample lists are the
      denominator this sentence is about. */
-  const names=new Set();
-  if(fmSample) for(const [,m] of fmSample) for(const [n] of m) names.add(n);
-  if(fmSite) for(const [,v] of fmSite) names.add(v.marker);
-  const n=[...names].filter(markerOffSubtype).length;
+  /* markerNames, not `names` — that is the global sample-name array, and
+     shadowing it inside a function that shares its scope is the temporal-dead-
+     zone trap docs/CONTRIBUTING.md warns about, one edit away from firing. */
+  const markerNames=new Set();
+  if(fmSample) for(const [,m] of fmSample) for(const [nm] of m) markerNames.add(nm);
+  if(fmSite) for(const [,v] of fmSite) markerNames.add(v.marker);
+  const n=[...markerNames].filter(markerOffSubtype).length;
   /* Name only the proteins actually affected. The cow reference is A_HA_H5 with
      a bare A_NA, so its HA markers ARE confirmed and only NA is in doubt —
      saying "HA/NA" there overstates the problem, which is the same failure as
      understating it. */
   const which=bad.map(b=>b.split(' ')[0]).join('/');
   return `<span class="warn">!</span> ${bad.join(', ')} — ${which} markers unconfirmed\n`+
-         `   ${n} of ${names.size} marker${names.size===1?'':'s'} affected\n`;
+         `   ${n} of ${markerNames.size} marker${markerNames.size===1?'':'s'} affected\n`;
 }
 
 function flumutSection(i){
@@ -7595,7 +7859,7 @@ function wfabcSection(i){
     return note(`WFABC results loaded (${wfabc.n} sites), but metadata column for animal IDs is not assigned.`);
 
   const m=meta.get(names[V.row[i]])||{};
-  const animal=String(m[wfabcAnimalCol]==null?'':m[wfabcAnimalCol]).trim();
+  const animal=metaVal(m,wfabcAnimalCol);
   if(!animal)
     return note(`Sample has no value in metadata column <b>${esc(wfabcAnimalCol)}</b>.`);
 
@@ -9374,7 +9638,7 @@ function resetFilters(){
     hidden: [],
     hideEmpty: false,
     hideFail: false,
-    qc: {minCalls: 1, minMedDepth: 200, maxLowFrac: 0.25},
+    qc: {minCalls: 1, minMedDepth: 200, maxLowFrac: 0.25, minSegs: 8},
     sort: []
   };
   applyState(def);
@@ -9929,7 +10193,11 @@ async function doExport(){
   // option is offered only where it means something rather than silently
   // producing a malformed file.
   const opts=Object.entries(EXPORT_FORMATS)
-    .filter(([k])=>k!=='vcf'||viewMode==='variants')
+    /* Both views that build the variant row set. exportBuild returns the same
+       17 columns for 'nucleotides' as for 'variants' — the alphabet on screen
+       does not change what a call is — so withholding VCF there withheld it
+       from a file it could write correctly. */
+    .filter(([k])=>k!=='vcf'||viewMode==='variants'||viewMode==='nucleotides')
     .map(([k,f])=>`<option value="${k}">${f.label}</option>`).join('');
   wrap.innerHTML=
     `<div class="dlg">
