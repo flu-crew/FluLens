@@ -289,3 +289,14 @@ pipelines to make the data.
 ## License
 
 GPL-3.0-or-later, the same as Flumina. See [`LICENSE`](LICENSE).
+
+## AI Use Disclosure
+
+AI-assisted coding tools, including Claude Code and OpenAI Codex, were used during development of this project.
+
+The underlying ideas, scientific questions, project design, methodology, software architecture, and implementation decisions were developed by the author. AI tools were used primarily as development assistants for tasks such as creating the graphical user interface, code review, identifying bugs, suggesting fixes, improving code clarity, generating or refining documentation, and assisting with implementation of clearly specified functionality.
+
+All AI-generated or AI-suggested changes were reviewed before inclusion in the project. Responsibility for the design, correctness, scientific validity, testing, maintenance, and final contents of the software remains with the author.
+
+AI tools were not treated as independent authors or sources of scientific conclusions.
+
