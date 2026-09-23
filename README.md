@@ -288,7 +288,7 @@ pipelines to make the data.
 
 ## License
 
-GPL-3.0-or-later, the same as Flumina. See [`LICENSE`](LICENSE).
+GPL-3.0-or-later. See [`LICENSE`](LICENSE).
 
 ## AI Use Disclosure
 
