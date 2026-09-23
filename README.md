@@ -1,3 +1,6 @@
+[![Claude Code](https://img.shields.io/badge/Claude_Code-assisted-D97757?logo=claude&logoColor=white)](https://github.com/anthropics/claude-code)
+[![OpenAI Codex](https://img.shields.io/badge/OpenAI_Codex-assisted-000000?logo=openai&logoColor=white)](https://github.com/openai/codex)
+
 ![FluLens — influenza variant visualizer](docs/img/banner.png)
 
 FluLens is a viewer for influenza variant calls. You can inspect and filter them.
