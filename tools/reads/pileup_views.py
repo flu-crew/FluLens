@@ -7,8 +7,8 @@
                                  and TOTAL_DP are actually measured on
   BAQ ON, overlap removal ON   — roughly what LoFreq works from
 
-(Details of an unpublished run were removed here.)
-
+The three can differ widely. Verified against iVar's own output:
+`TOTAL_DP` equals the middle column exactly.
 
 usage: pileup_views.py <bam> <ref_fa> <contig:start-end> <min_bq>
 """

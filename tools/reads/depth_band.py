@@ -7,8 +7,6 @@ then applies `-q`, so the depth its `-m` floor tests is smaller. Every position
 where the raw depth clears 100 but iVar's does not is a position the run calls
 adequately covered and no caller ever evaluates.
 
-(Details of an unpublished run were removed here.)
-
 Writes a per-position table for the band and prints per-sample counts.
 
 usage: depth_band.py <run_dir> <out_tsv> [sample ...]

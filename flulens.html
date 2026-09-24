@@ -955,10 +955,10 @@ the changed base's colour.</div>
           <option value="curated">curated only</option>
           <option value="flumut">FluMut markers only</option>
           <option value="either">curated or FluMut</option>
-          <!-- (Details of an unpublished run were removed here.)
-
-
- -->
+          <!-- POSITIVE and opt-in, which is the only safe shape for this. IRMA
+               speaks to only a small share of caller positions, so a negative
+               toggle beside the caller checkboxes would hide most calls and read as
+               "IRMA disagrees" when it means "IRMA is silent". -->
           <option value="irma">IRMA-corroborated only</option>
         </select></div>
       <!-- Caller order is LoFreq · iVar · GATK4 everywhere in the app. The two
@@ -1168,11 +1168,11 @@ function shortLocus(x){
   return String(x||'').replace(/^A_/,'').replace(/_[A-Z][0-9]+$/,'');
 }
 
-/* (Details of an unpublished run were removed here.)
-
-
-
-
+/* ---- frequency buckets ----------------------------------------------------
+   Six ordinal steps of ONE hue. Class 0 is "no call" and is never painted, so
+   absence stays the surface and the rare high-frequency calls are what the eye
+   lands on. Bucket edges are biological, not equal-width: most real calls sit
+   under 5%.
 
    Every ramp below was generated at even OKLab lightness spacing and then run
    through the data-viz validator (lightness monotone, adjacent gaps >= 0.06,
@@ -1360,12 +1360,12 @@ let aaHalo='none';
    the restore sits inside a try/catch the error is swallowed and the setting
    silently never applies. Add new preferences to THIS block. */
 let freqLog=false;
-/* (Details of an unpublished run were removed here.)
-
-
-
-
- */
+/* Square cells: row height tracks column width, so a cell is a square at any
+   zoom and the plain wheel scales both together. Off, rows auto-fit the
+   viewport height and the wheel scales columns only.
+   Worth knowing: thousands of columns against far fewer rows means square cells CANNOT
+   show the whole matrix and the whole cohort at once — fit picks whichever
+   constraint binds, which is the width, and the rows end up short. */
 let squareCells=true;
 /* Filter state, declared HERE for the reason stated above. minAlt is reads
    SUPPORTING the variant (DP4 alt fwd+rev), which is not min depth: depth is
@@ -1492,14 +1492,9 @@ let sortKeys=[], manualOrder=null, hideEmpty=false, hideFail=false;
    defaults to the value that asserts nothing. The slider is the place to tighten
    it, per session, by someone looking at the cohort.
 
-   (Details of an unpublished run were removed here.)
-
-
-     (Details of an unpublished run were removed here.)
-
-
-
- */
+   Raising it fails more samples quickly. 10x (1000) is MIN_ALT /
+   MIN_ALLELE_FREQUENCY: the depth a 1% call needs to clear a 10-alt-read
+   floor. */
 const QC_DEPTH_FACTOR=1;
 /* minSegs is the one rule that does NOT come from the variant table. Influenza A
    has eight segments; a library that recovered seven cannot support a
@@ -1535,12 +1530,12 @@ const META_COL_MIN=28;        // narrow enough to park a column, wide enough to 
 let metaColW=new Map();
 function mcw(c){ const w=metaColW.get(c); return (w>0)?w:META_COL_W; }
 
-/* (Details of an unpublished run were removed here.) */
-/*
-
-
-
-
+/* ---- reading the run directory -------------------------------------------- */
+/* Nextflow's work directory usually sits INSIDE the run directory, and it holds
+   a staged copy of nearly everything: many copies of reference.fa and of the
+   LoFreq VCFs, and one of each analysis table. Every lookup
+   in this app takes the first path that matches — findFile by suffix, findVCF
+   by sample leaf — so those copies are not inert, they compete.
 
    It showed up as a wrong number rather than an error: reference_gtf appeared
    twice, PB2's CDS was counted twice, and the panel offered "codon 421 of 1518"
@@ -1582,11 +1577,10 @@ function runSampleDirs(){
   }
   return out;
 }
-/* (Details of an unpublished run were removed here.)
-
-
-
-
+/* Samples that exist in the run but have no row in the amino-acid table.
+   They are libraries whose every call fell below the pipeline's MIN_DEPTH, so
+   the table never names them — and until they were given rows here, FluLens
+   could not show them at all.
 
    Nothing else needs changing to make this work. An empty row scores calls 0,
    median depth 0 and low-depth fraction 1, so computeQC fails it on its own
@@ -1730,10 +1724,9 @@ async function readReferenceProteins(gtf){
    explains this trajectory (s_map, with a credible interval, plus Ne). It
    covers every fitted site — two time points is enough.
 
-   (Details of an unpublished run were removed here.)
-
-
-
+   FIT_results.csv is the Frequency Increment Test, added later as the more
+   definitive drift test: is this trajectory distinguishable from drift AT ALL?
+   It needs three time points, so it covers only a subset of the trajectories.
 
    Reading only FIT throws away every two-timepoint site; reading only the
    summary loses the drift test. So both are loaded and joined on
@@ -1826,10 +1819,10 @@ function pickAnimalCol(animals){
    at two or more time points. Look for a column that groups samples and a
    second, STRICTLY numeric one that varies inside those groups.
 
-   (Details of an unpublished run were removed here.)
-
-
- */
+   Strictly numeric matters: parseFloat("25-000000-001-original") is 25, so a
+   lenient test happily nominated a sample-ID column as the time axis. Score the
+   candidates rather than taking the first match, so a real time column beats an
+   accidental one. */
 const NUMERIC_RE=/^-?\d+(\.\d+)?$/;
 function looksTimeSeries(){
   if(!metaCols.length||!meta.size) return null;      // cannot tell
@@ -1849,12 +1842,11 @@ function looksTimeSeries(){
       if(tc===idc) continue;
       let score=0, ok=true;
       for(const [,ms] of groups){
-        /* (Details of an unpublished run were removed here.)
-
-
-
-
- */
+        /* metaVal, so a missing cell drops out instead of being tested. Reading
+           "NA" literally made this fail the whole candidate on the first sample
+           the metadata join had missed: a real (individual, day) pair with
+           repeat sampling was still rejected, and the answer came back `false`
+           — "definitely not a time series" — about a real time series. */
         const vals=[...new Set(ms.map(m=>metaVal(m,tc)).filter(Boolean))];
         if(!vals.length) continue;
         if(!vals.every(v=>NUMERIC_RE.test(v))){ ok=false; break; }
@@ -1876,17 +1868,16 @@ function looksTimeSeries(){
 /* Read the pipeline's position map: FluMut's numbering -> this reference's.
    `label|flumut_pos` -> {product, pos, refAA, fmAA}.
 
-   (Details of an unpublished run were removed here.)
+   This replaces a per-label offset this app used to solve for itself. That
+   search needed several markers per label to pin a shift down, so small proteins
+   (M2, PB1-F2, NS-2) never resolved at all; and worse, a single offset is only
+   correct when the two proteins are colinear. HA and NA are not: they differ by
+   INDELS across subtypes, so the best single shift for HA1 explains only part
+   of the markers — not a fit, and not a clean failure either.
 
-
-
-
-
-
-   (Details of an unpublished run were removed here.)
-
-
-
+   The pipeline aligns FluMut's own reference proteins onto this run's, which
+   absorbs the indels and makes HA/NA work on any subtype rather than only H5N1.
+   Validated against FluMut's own placement on an H3N2 and an H5N1 run.
 
    A position absent from the file is one the alignment would not place, and it
    stays absent here. That rule is unchanged and is the whole point: an absent
@@ -1980,9 +1971,8 @@ async function readFluMut(){
      flumut_freq_threshold onto the reference and screens that: which markers
      are present at all, including well below consensus.
 
-     (Details of an unpublished run were removed here.)
-
-
+     The gap is large and it is the point: far more markers sit below consensus
+     than at it, so reading only the first hides most of the finished analysis.
 
      Kept in its own map rather than merged. A marker at 2% and a marker fixed
      in the consensus are not the same claim, and merging them would silently
@@ -2090,8 +2080,8 @@ function parseAA(text, gtfLens){
     'variant_id','af_type','allele_fraction','ivar_pass','af_conflict','gatk_filter',
     'alt_reads','strand_class','assessment',
     /* Flumina 2.1.0. Both are per-variant. indel_source in particular must be
-       named here and cannot be left to the constancy test below: on the swine
-       run it reads "TRUE" on every row of every sample, so it is constant within
+       named here and cannot be left to the constancy test below: when iVar ran
+       for every sample it reads "TRUE" on every row, so it is constant within
        a sample by accident and the test has no grounds to reject it. The list
        catches the columns we know; the test catches the ones we do not. */
     'dist_to_indel','indel_source']);
@@ -2242,15 +2232,15 @@ function parseAA(text, gtfLens){
      statedAssess: C.assessCol>=0};
   NT=names.length;
 
-  // (Details of an unpublished run were removed here.)
-  //
-  //
-  /*
-
-
-
-
- */
+  // Multi-variant codons — findAAChanges.R mutates one nucleotide at a time and
+  // translates against the reference, so two variants in one codon are each
+  // reported independently and the real haplotype is never computed.
+  /* Count DISTINCT changes per codon, not rows. Both callers fire at most sites,
+     so the table carries two rows for one change, and counting rows reported
+     more multi-variant codons than there are: a single change reported twice
+     looked like two. The per-variant panel already dedupes on
+     pos:alt (see codonMates in renderVariant); this is the same key, and the
+     two disagreeing is how the inflated number survived. */
   const seen=new Map(); let multi=0;
   for(let i=0;i<n;i++){
     const k=V.row[i]*NC+V.col[i];
@@ -2276,12 +2266,11 @@ function parseAA(text, gtfLens){
    parseAA because it must run AFTER reconcileFrequencies() and
    loadRunThresholds(), not before.
 
-   (Details of an unpublished run were removed here.)
-
-
-
-
- */
+   Order is the whole point. A GATK4 hom-alt row reads allele_frequency 1.0
+   until reconciliation gives it LoFreq's fraction, so counting first reported
+   too many calls above 90%. AS_MIN_DEPTH has the same problem from the
+   other side: parseAA ran with the default 30 (or run A's floor on run B) while
+   renderNotes labelled the answer with the final value. */
 function countDepthStats(){
   if(!stats||!V) return;
   stats.lowdepth=0; stats.fix=0; stats.fixLow=0;
@@ -2332,20 +2321,19 @@ function findVCF(sample){
   for(const [p,f] of files) if(p.endsWith(leaf)) return {f, path:p};
   return {f:null, path:'*'+leaf};
 }
-/* (Details of an unpublished run were removed here.)
+/* ---- GATK4's own verdict on its own calls ---------------------------------
+   gatk4-filtered-snps.vcf is VariantFiltration's output, which ANNOTATES rather
+   than removes: a record carrying FILTER=FS;SOR is one GATK4 flagged as failing
+   its FisherStrand and StrandOddsRatio tests and is still written to the file.
+   Downstream is expected to honour the column, and convertVCFtoTable.R does not
+   look at it — so every GATK4 row reaches the amino-acid table as though it had
+   passed.
 
-
-
-
-
-
-
-
-   (Details of an unpublished run were removed here.)
-
-
-
- */
+   This is read purely to explain a call, never to hide one. The panel used to
+   tell the reader that LoFreq's silence at a GATK4 position was "expected —
+   GATK4 calls at consensus level, LoFreq below it", which for the calls that
+   have no LoFreq counterpart at all is simply the wrong reason: those sit at
+   very low depth in the thinnest libraries and GATK4 itself rejected them. */
 let gatkCache=new Map();
 function findGATK(sample){
   const leaf=`/${sample}/gatk4-filtered-snps.vcf`;
@@ -2425,12 +2413,12 @@ async function loadVCF(sample){
    to borrow at all — which is most iVar rows on a run where iVar applies the
    depth floor at call time and LoFreq does not.
 
-   (Details of an unpublished run were removed here.)
-
-
-
-
- */
+   PASS is iVar's Fisher exact test against the sequencing error rate, and it is
+   the GATK4 FILTER situation exactly: iVar ANNOTATES rather than removes, so a
+   row it flagged as failing arrives in the table looking clean. The pipeline
+   now carries this as the
+   `ivar_pass` column too; this reader is what makes it available per position
+   even for a table written before that column existed. */
 let ivarCache=new Map();
 function findIvar(sample){
   const leaf=`/${sample}/ivar-called-variants.tsv`;
@@ -2484,12 +2472,11 @@ function ivarRecOf(i){
 }
 /* The strand record for a call, from whichever caller actually produced it.
 
-   (Details of an unpublished run were removed here.)
-
-
-
-
- */
+   iVar rows read iVar's TSV. Everything else keeps the existing behaviour of
+   reading the LoFreq VCF at that position — for a LoFreq row that is its own
+   record, and for a GATK4 row it is a borrow, since GATK4's VCF carries no DP4
+   at all. Where LoFreq is silent too there is nothing to read, and the call
+   assesses as UNKNOWN rather than as poor. */
 function strandRecOf(i){
   return V.method[i]===M_IVAR ? ivarRecOf(i) : vcfRecOf(i);
 }
@@ -2507,8 +2494,8 @@ function strandRecOf(i){
    strip is blank. That is a state you cannot otherwise notice until a result
    is missing days later.
 
-   (Details of an unpublished run were removed here.)
- */
+   Loaded lazily and throttled, like the VCFs: a large run has one small file per
+   sample, and at fit zoom every row is visible at once. */
 let segCache=new Map();          // sample -> {byLoc, match, nomatch} | null
 const segWanted=new Set();
 let segQueue=[], segBusy=0, segState='unknown';   // 'unknown' | 'none' | 'ok'
@@ -2792,10 +2779,9 @@ function codonNtFor(product, codonIdx){
 
 /* ---- per-position depth, for "does this marker rest on any reads?" ---------
 
-   (Details of an unpublished run were removed here.)
-
-
-
+   Flumina's DEPTH_PROFILE publishes depth_profiles/<sample>.depth —
+   `samtools depth -a` on the reference-aligned BAM, so it is already in the
+   reference coordinates FluMut's markers land in once calibrated.
 
    Why this check lives HERE and not in the pipeline: FluMut numbers its markers
    in its own scheme (HA1-5 is H5 HA1 numbering, NA-1 is N1), so asking which
@@ -2805,8 +2791,8 @@ function codonNtFor(product, codonIdx){
    two against a per-sample depth profile is a reader's question, asked of one
    sample at a time and only for markers on screen, so it stays here.
 
-   (Details of an unpublished run were removed here.)
- */
+   Read lazily and cached per sample, like the VCFs — one file of ~13k lines per
+   sample is not something to load at open for a panel most readers never scroll to. */
 let depthCache=new Map();     // sample -> Map(segment -> Int32Array by 1-based pos) | null
 /* Column 4, kept beside depthCache rather than folded into it so nothing that
    already reads a raw depth changes shape.
@@ -2979,18 +2965,18 @@ function markerSupport(sample, marker){
   return {depth:worst, visible:worstVis, unmapped};
 }
 
-/* (Details of an unpublished run were removed here.)
-
-
-
- */
-/*
-
-
-
-
-
-
+/* ---- dev bootstrap ---------------------------------------------------------
+   Only when this page is SERVED over http, and only to save picking a folder
+   during development. It fakes the same `files` map the directory picker
+   builds, with entries whose .text() fetches on demand — so every code path
+   below is the real one. Under file:// nothing here runs. */
+/* The load overlay, driven from OUTSIDE loadRun.
+   loadRun's phase() only starts once every file has been found, and finding
+   them is the long part: the dev path lists BAM_files, IRMA_results and
+   vcf_files per sample and HEAD-probes four BAM paths each — hundreds of round
+   trips on a large run, all of it before the first phase() fires. So the screen
+   sat blank and the bar appeared, filled and vanished in the last second, which
+   reads as a hang followed by a flicker rather than as progress.
 
    Discovery owns 0-25% of the bar and the named phases own 25-100%, so it only
    ever moves forward. */
@@ -3015,13 +3001,13 @@ async function devBootstrap(root='run'){
   const disc=(sub,frac)=>loadShow('finding the run\u2019s files', sub,
                                   2+23*Math.max(0,Math.min(1,frac)));
   disc('listing the run directory\u2026',0);
-  /* (Details of an unpublished run were removed here.)
-
-
-
-
-
-
+  /* The whole body of the last file a server answered a ranged request for with
+     a plain 200. `python3 -m http.server` does not implement Range at all: it
+     returns the entire file however few bytes were asked for. Discarding all
+     but the slice — which is what this did — turns one segment scan into one
+     whole-BAM download PER 8 MB WINDOW, so the cost grows with the square of the
+     file size. On a large BAM the fetch gives up and the pile-up reports
+     "TypeError: Load failed".
 
      So keep it. One file at a time, replaced when a different one is asked for,
      which bounds the cost at the size of the largest BAM. A server that honours
@@ -3180,9 +3166,9 @@ async function devBootstrap(root='run'){
       }
     }
   }
-  // (Details of an unpublished run were removed here.)
-  //
-  //
+  // per-sample IRMA read counts. Registered without a HEAD probe, like the VCFs
+  // above — one probe per sample costs a round trip each and the loader already treats a
+  // missing file as "no data for this sample".
   disc('IRMA tables\u2026',0.5);
   for(const dir of (await listDir('')).map(x=>x.replace(/\/$/,'')).filter(x=>/^IRMA_results/.test(x))){
     const sdirs=await listDir(dir); let done=0;
@@ -3231,8 +3217,8 @@ async function devBootstrap(root='run'){
 
 /* ---- open ------------------------------------------------------------------ */
 async function openRun(list){
-  // (Details of an unpublished run were removed here.)
-  //
+  // Up before indexFiles, which walks every path the picker handed over (a
+  // large run has very many) with nothing on screen while it does.
   loadShow('reading the folder', `${list.length.toLocaleString()} files`, 4);
   await new Promise(r=>setTimeout(r,0));      // let the overlay paint first
   indexFiles(list);
@@ -3294,14 +3280,14 @@ async function loadRun(){
     // Before anything sizes an NT*NC grid — applyFilters, buildConsensus and the
     // IRMA arrays all allocate from NT and would be short by these rows.
     const noCallSamples=addSamplesWithoutCalls();
-    /* (Details of an unpublished run were removed here.)
-
-
-
-
-
-
- */
+    /* Immediately, not lazily from applyFilters(). Reconciliation REWRITES
+       V.freq for GATK4 rows that borrow LoFreq's fraction, and applyFilters
+       computes colour buckets and the min-freq filter from V.freq BEFORE its
+       own lazy call fired — so the first paint used raw genotype values and
+       every later pass used reconciled ones. Some cells drew a
+       bucket too high until an unrelated filter change redrew them, which is
+       the kind of thing you see once and cannot reproduce. Doing it here also
+       means afStats is populated before the sidebar below is built. */
     reconcileFrequencies();
     await phase('translating reference proteins');
     refCDS=new Map();          // per run, not accumulated across runs
@@ -3422,9 +3408,9 @@ async function loadRun(){
         ? `<span class="ok">✓</span> IRMA read counts for ${nSeg} of ${NT} samples\n`+
           `   cover: reads per segment, by decade — 8 cells, gene order\n`
         : `<span class="warn">·</span> no IRMA read counts — no assembly strip\n`)+
-      /* (Details of an unpublished run were removed here.)
-
- */
+      /* The samples the table never named. Stated as a count even though they
+         now have rows of their own: a reader scanning the sidebar should not
+         have to notice N empty rows in a large grid to learn the number. */
       (noCallSamples.length
         ? `<span class="warn">!</span> ${noCallSamples.length} samples in the run with no calls\n`+
           `   shown as empty rows — every call fell below the depth floor\n`
@@ -3668,10 +3654,10 @@ function cmpKey(key,a,b){
   if(key==='qc')   return qcOf(a)-qcOf(b);          // fail(0) before pass(1)
   if(key==='calls')return (callCount[a]||0)-(callCount[b]||0);
   if(key==='seg'){
-    /* (Details of an unpublished run were removed here.)
-
-
- */
+    /* Segments recovered, then total matched reads as the tiebreak — eight of
+       eight on few reads and eight of eight on very many reads are not the same
+       library. A sample whose counts have not loaded yet sorts last rather
+       than as zero, which would read as a failed assembly. */
     const ra=segCache.get(names[a]), rb=segCache.get(names[b]);
     const ha=segCache.has(names[a])&&ra, hb=segCache.has(names[b])&&rb;
     if(!ha&&!hb) return 0;
@@ -3846,19 +3832,18 @@ for(const [id,vid,fmt,set] of [
     set(e.target.value); document.getElementById(vid).textContent=fmt(e.target.value);
     savePresetState(); if(ready){ rebuildRowOrder(); schedule(); } });
 
-// (Details of an unpublished run were removed here.)
-//
-/*
-
-
-
-
- */
-/*
-
-
-
-
+// Metadata columns are whatever the METADATA csv contributed; offer them both
+// as display columns and as sort keys.
+/* Join a metadata CSV that the pipeline never merged.
+   Flumina only folds METADATA into the amino-acid table when the run was
+   configured with one; plenty of runs were not, and the spreadsheet usually
+   lives beside the project rather than inside the results. So load it here and
+   join on whichever column actually matches the sample names — named "Sample"
+   by convention, but verified by overlap rather than trusted. */
+/* ---- SNPGenie: per-codon piN and piS ---------------------------------------
+   codon_results_summary.csv is a DENSE tiling of sample x codon, but only a small
+   part of it carries any difference. So the file is huge and the result is
+   small: a Map, not a grid.
 
    It is deliberately NOT run through parseDelimited. That builds an array per
    row and a string per field: ten million allocations to keep three percent.
@@ -3867,8 +3852,8 @@ for(const [id,vid,fmt,set] of [
    the fields used here can contain a comma, which is what makes the plain split
    safe on quoted CSV.
 
-   (Details of an unpublished run were removed here.)
- */
+   Lazy, like the assessment: a large parse has no business running for a reader
+   who never opens the layer. */
 let snpCells=null, snpState='unknown', snpStats=null, snpBusy=null;
 function snpKeyOf(i){ return V.row[i]*NC+V.col[i]; }
 function ensureSNPGenie(){
@@ -3926,12 +3911,11 @@ function ensureSNPGenie(){
  * oversight: a codon with no excess either way should recede, the same way
  * absence stays the surface everywhere else in this view.
  *
- * (Details of an unpublished run were removed here.)
- *
- *
- *
- *
- * */
+ * SYMMETRIC BREAKS, though the data is not symmetric — piS excess reaches 1.50
+ * and piN excess only 0.25. Scaling each arm to its own range would paint a
+ * +0.05 codon and a −0.05 codon differently, which is exactly the comparison
+ * the reader is making. Saturation at the top step is the honest cost. On real
+ * data both arms use all three steps. */
 const SEL_BREAKS=[0.01, 0.03, 0.10];
 const SEL_RAMP={
   dark: {pos:['#fcaca6','#e48781','#c26863'], neg:['#9ec5f4','#6da7ec','#3987e5'], mid:'#3a3f4a'},
@@ -3944,9 +3928,9 @@ function selColour(d){
   return (d>0?R.pos:R.neg)[a>=SEL_BREAKS[2]?2 : a>=SEL_BREAKS[1]?1 : 0];
 }
 
-/* (Details of an unpublished run were removed here.)
-
- */
+/* Same discipline as the variants path: iterate the SPARSE data, never the
+   cell grid. Tens of thousands of entries is nothing per frame, and grouping by colour keeps
+   this to seven fills. */
 function drawSelection(bx,by,bw,bh,c0,c1,r0,r1,rh){
   const mark=Math.max(cw<1?3:1,cw), mh=Math.max(cw<1?2:1,rh);
   const paths=new Map(); let drawn=0;
@@ -4321,10 +4305,10 @@ async function resolveCodon(vi,mates){
   const e=document.getElementById('codonres'); if(e) e.className='verdict '+cls;
 }
 
-/* (Details of an unpublished run were removed here.)
-
- */
-/*
+/* Paint the consensus alignment. Identity is a faint ground drawn once per
+   product per row rather than per cell — a full grid of residue-coloured cells
+   is an even wash, and the whole point of the view is what moved. */
+/* The opened sample's own row, lifted out of the field.
 
    Without it the band floats under a row that looks like all the others, and the
    changes it belongs to are indistinguishable from the eleven rows of changes
@@ -4391,10 +4375,10 @@ function drawExpandedBand(bx,by,bw,rh,expH,expPos,c0,c1){
           if(aa===ref) continue;
           const h=Math.min(H-acc, Math.max(2, frac*H));
           if(h<=0) break;
-          // (Details of an unpublished run were removed here.)
-        //
-        //
-        //
+          // aaColour takes the LETTER — AA_SCHEMES is keyed A:, R:, N: … — and was
+        // being handed AAIDX's integer, so `s[14]` was undefined and every
+        // residue fell through to the scheme's unknown-residue grey. Measured:
+        // every mark came out #9a9a94.
         ctx.fillStyle=aaColour(aa)||TH.consDiff;
           ctx.fillRect(x, y+3+acc, w, h);
           acc+=h;
@@ -4458,10 +4442,10 @@ function drawConsensus(bx,by,bw,bh,c0,c1,r0,r1,rh,expH,expPos){
        AMBIGUOUS is its own colour, not a gap and not a change: IRMA had reads
        here and still could not call a base. "N" is a third answer.
 
-       (Details of an unpublished run were removed here.)
-
-
- */
+       THIN rides ON TOP of the change, never instead of it — a thin change is
+       still a change, and swapping the mark would make a low-coverage residue
+       vanish from the view whose job is to show it. Changes only; the many
+       thin residues that MATCH the reference stay panel-only, per markThin. */
     const gaps=new Path2D(), amb=new Path2D(), diff=new Path2D(), thin=new Path2D();
     const th=Math.max(1,Math.min(2,rh*0.34));
     for(let r=r0;r<r1;r++){
@@ -5000,13 +4984,13 @@ function readAAMiss(B,r){
 }
 /* A mark's colour at a given base quality.
 
-   (Details of an unpublished run were removed here.)
-
-
-
-
-
-
+   The fade used to be globalAlpha, which blends the mark INTO the read beneath
+   it — and at the qualities this stack actually carries that is most of them:
+   most mismatches in a real pile-up are BQ 10-19. A red T at alpha .5
+   over a reverse-strand body landed on rgb(58,36,41) against rgb(43,51,64), so
+   the mark came out darker than the read and read as a hole punched through it
+   rather than something painted on it. Reported as "the coloured bases look
+   like they are behind the read span".
 
    Opaque now, and faded toward the same grey N and '-' already carry — "no
    information" is exactly what a low-BQ base is — in the three Phred bands the
@@ -5141,10 +5125,10 @@ function drawOneRead(B,r,y,h,ref,letters,striped){
     for(let i=0;i<am.length;i+=3){
       const cd=am[i], aa=String.fromCharCode(am[i+1]), q=am[i+2];
       const x=B.xBase+cd*cw;
-      // (Details of an unpublished run were removed here.)
-      //
-      //
-      //
+      // aaColour takes the LETTER — AA_SCHEMES is keyed A:, R:, N: … — and was
+      // being handed AAIDX's integer, so `s[14]` was undefined and every
+      // residue fell through to the scheme's unknown-residue grey. Measured:
+      // every mark came out #9a9a94.
       const mc=markColour(aaColour(aa)||TH.consDiff,q);
       ctx.fillStyle=mc;
       ctx.fillRect(x,y,Math.max(1,cw),h);
@@ -5294,14 +5278,12 @@ function setReadsSample(sm){
 
 /* ---- one variant, two callers -------------------------------------------
    LoFreq and GATK4 both call most sites, so the table carries two rows for the
-   same change. They are not two measurements of the same quantity:
+   same change. They are not two measurements of the same quantity.
 
-     (Details of an unpublished run were removed here.)
-
-   (Details of an unpublished run were removed here.)
-
-
-
+   LoFreq reports an allele fraction. GATK4 reports a GENOTYPE: hom-alt becomes
+   1.0 whatever the reads say, even where some reads still carry the reference.
+   The BAM settles it — LoFreq agrees closely with the reads and GATK4 is not
+   measuring the same thing at all.
 
    So where both callers found the same change, the GATK4 row takes LoFreq's
    frequency. Where only GATK4 found it there is nothing to borrow, and the
@@ -5316,12 +5298,12 @@ let afStats={borrowed:0,genotype:0,source:'inferred'};
 function reconcileFrequencies(){
   afSource=new Uint8Array(V.n);
 
-  /* (Details of an unpublished run were removed here.)
-
-
-
-
- */
+  /* Since 2026-08 the pipeline states this itself, so take what it says rather
+     than re-deriving it. The inference below is not wrong, but two independent
+     implementations of the same rule drift, and the pipeline is the one that can
+     see the VCFs. The mapping onto
+     afSource is deliberately identical, so everything downstream is unaffected
+     by which path ran. */
   if(V.statedAF){
     let borrowed=0, genotype=0;
     for(let i=0;i<V.n;i++){
@@ -5357,12 +5339,11 @@ function reconcileFrequencies(){
    Strand Balance, depth at the position, allele frequency, and the number of
    reads actually SUPPORTING it.
 
-   (Details of an unpublished run were removed here.)
-
-
-
-
-
+   That last one is not depth and the difference matters. Depth counts every
+   read at the position; a 0.5% call on 15,000x has magnificent depth and may
+   rest on a handful of alt reads. It comes from DP4, never from depth x freq —
+   those agree for most calls and then diverge in the tail, which is precisely
+   the low-count end where a min-alt-reads rule decides anything.
 
    THRESHOLDS ARE THE RUN'S OWN FLOORS AND ARE NOT THE SIDEBAR SLIDERS. The
    depth, alt and frequency floors are read once from the run's config
@@ -5405,18 +5386,11 @@ let AS_MIN_DEPTH=AS_DEF_DEPTH, AS_MIN_FREQ=AS_DEF_FREQ, AS_MIN_ALT=AS_DEF_ALT;
    so they stay fixed and are not read from config. */
 const AS_STRAND_MIN_ALT=4, AS_SKEW_BAD=0.40, AS_SKEW_WARN=0.25;
 
-/* (Details of an unpublished run were removed here.)
-
-
-
-
-
-   (Details of an unpublished run were removed here.)
-
-
-
-
-
+/* The gap between LoFreq's and iVar's fraction at which the panel calls the two
+   callers' disagreement worth noticing. Same "reason rather than taste" rule as
+   the thresholds above: it was set from the spread of the gap on a real run,
+   where 0.05 marks only the largest disagreements. A much higher value would
+   flag nothing, and a much lower one would flag a large part of the table.
 
    It is a HIGHLIGHT threshold, never a verdict. It deliberately does NOT feed
    assessCore: the assessment's inputs are fixed and documented, and adding one
@@ -5560,11 +5534,11 @@ function computeAssessments(){
   }
   assessStats={real:c[0],caution:c[1],artefact:c[2],unknown:c[3]};
 }
-/* (Details of an unpublished run were removed here.)
-
-
-
- */
+/* Opt-in, not part of opening a run. Judging the whole table needs every
+   sample's VCF, and making that the price of opening any run is the wrong
+   trade for a filter most sessions never touch — it made opening a large run
+   many times slower. The panel needs no part of this: it
+   already loads its own sample's VCF and calls assessDetail directly. */
 let assessReady=false, assessBusy=null;
 function ensureAssessments(){
   if(assessReady) return Promise.resolve();
@@ -5619,10 +5593,10 @@ const isGenotypeAF=i=>afSource&&afSource[i]===2;
    wherever the sample has a call above 50%. That is what a consensus IS in
    reference coordinates, it is exact, and it is free.
 
-   (Details of an unpublished run were removed here.)
-
- */
-/*
+   Only the DIFFERENCES are painted. Filling every cell with residue
+   colours produces an even wash with no signal in it; identity is drawn as a
+   faint ground per product instead, so the eye goes straight to what moved. */
+/* TWO axes, ONE derived string.
 
    `viewer` is the alphabet, `variantView` is which calls. `viewMode` stays as
    the single value every draw, hit-test, panel and export path already reads —
@@ -5715,27 +5689,26 @@ const consSource = () => viewer==='nucleotides' ? consVar : consVarAA;
    existed the app showed a different consensus from the one the marker calls
    were made against.
 
-   (Details of an unpublished run were removed here.)
+   The two are not in conflict: wherever both have a call they agree on the
+   residue. The gap is
+   one-directional — IRMA carries changes the reference-based callers have
+   nothing at, because it maps to its own iteratively refined contig and recruits
+   reads BWA soft-clips at the segment termini. So this is a second source, not a
+   correction, and it gets a source switch rather than replacing anything.
 
+   COORDINATES ARE NOT INFERRED HERE. The pipeline aligns each contig to the
+   reference per sample per segment and publishes residues already on reference
+   codon numbering (IRMA_POSITION_MAP), for the same reason the FluMut map
+   exists: a contig can be truncated, sometimes by an amount that is not a
+   multiple of 3, or be a base LONGER than the reference — a position-1 assumption there returns confidently wrong residues
+   rather than failing visibly. Without the file this view says so and offers
+   nothing. It never falls back to guessing a frame.
 
-
-
-
-
-   (Details of an unpublished run were removed here.)
-
-
-
-
-
-
-
-
-   (Details of an unpublished run were removed here.)
-
-
-
- */
+   DEPTH IS IRMA'S OWN, not the BWA pileup's. min_depth exists because LoFreq and
+   GATK4 report false fixations below it, and applying that floor to an IRMA call
+   means reading depth from the alignment that produced the call. The two
+   disagree exactly where IRMA is interesting, for example at the segment ends,
+   where IRMA recruits reads that BWA soft-clips. */
 const IRMA_ST={change:1, change_thin:2, change_nodepth:3,
                thin:4, ambiguous:5, uncovered:6};
 const IRMA_LABEL={1:'change', 2:'change (thin)', 3:'change (depth unknown)',
@@ -5749,11 +5722,11 @@ let irmaSt=null;      // Uint8Array NT*NC — IRMA_ST code; 0 agrees, 255 unknow
 let irmaDep=null;     // Int32Array NT*NC — IRMA depth, -1 = unknown
 let irmaFrame=null;   // Map `row|product` -> {status, placed, len}
 let irmaState='unknown', irmaStats=null, irmaBusy=null;
-/* (Details of an unpublished run were removed here.)
-
-
-
- */
+/* Which consensus the view paints, and whether a thin change is marked in the
+   grid. Thin is OFF by default and marks CHANGES ONLY: many residues match the
+   reference below the floor, and shading those would bury the few changes this
+   view exists to show. The depth of any
+   single cell is always available in the panel, the way item 0a reports it. */
 let consSrc='derived';
 let markThin=false;
 const irmaOn = () => consSrc==='irma' && viewer!=='nucleotides' && irmaSt;
@@ -5835,25 +5808,21 @@ function irmaCellAt(row,col){
 }
 /* ---- IRMA as CORROBORATION, not a fourth caller ----------------------------
 
-   (Details of an unpublished run were removed here.)
+   LoFreq, iVar and GATK4 all consume the same BWA BAM, so their agreement
+   carries no information about alignment error. IRMA's does — it is the only
+   independent alignment in the pipeline. That is worth having, and worth having
+   as an ANNOTATION rather than a caller checkbox: IRMA speaks to only a small
+   share of caller positions, so a toggle beside LoFreq/iVar/GATK4 would hide
+   most calls and read as "IRMA disagrees" when it means "IRMA is silent". The
+   one control it gets is POSITIVE — "IRMA-corroborated only" — which the reader
+   opts into.
 
-
-
-
-
-
-
-   (Details of an unpublished run were removed here.)
-
-
-
-   (Details of an unpublished run were removed here.)
-
-
-
-
-
- */
+   THE PIPELINE DOES THE RECONCILIATION, and it has to. IRMA states its minority
+   allele against ITS OWN consensus. Sometimes the minority allele is EQUAL to
+   the reference base — a partial reversion, where the non-reference allele is
+   IRMA's CONSENSUS. Reading `minor_allele` as "the alt" gets those exactly
+   backwards, and that is not hypothetical: it is how this item's first
+   measurement came out short. */
 let irmaVar=null;      // `sample|locus|pos` -> reconciled record
 let irmaVarState='unknown', irmaVarBusy=null, irmaVarStats=null;
 
@@ -5873,11 +5842,11 @@ function ensureIrmaVar(){
       // reference, the non-reference allele is the consensus one.
       const minorIsRef = c[11]==='yes';
       if(minorIsRef) rev++;
-      /* (Details of an unpublished run were removed here.)
-
-
-
- */
+      /* shortLocus, because V.seg carries the SHORT name — `HA`, not
+         `A_HA_H3` — and the pipeline writes the full locus. The eight loci stay
+         distinct under it, so this collapses nothing. Keying on the raw name
+         silently matched none of the rows, which looks exactly like "IRMA
+         corroborates nothing" and is why the join is asserted in the tests. */
       m.set(c[0]+'|'+shortLocus(c[1])+'|'+c[2], {
         alt: minorIsRef ? c[4] : c[6],
         af : +(minorIsRef ? c[5] : c[7]),
@@ -5957,10 +5926,10 @@ function syncConsControls(){
       ? `${irmaStats.frames.toLocaleString()} sample × product frames · `+
         `${irmaStats.residues.toLocaleString()} stated residues. Grey means IRMA placed `+
         `nothing there — not agreement. Depth is IRMA's own coverage, not the BWA pileup.`+
-        /* (Details of an unpublished run were removed here.)
-
-
- */
+        /* The rows IRMA published that this grid has no cell for — a sample or a
+           product the reference does not carry. Counted since this loader was
+           written and never shown, which once hid a large drop of rows. A number
+           that large is a fact about the join, not a rounding error. */
         (irmaStats.unmatched
           ? ` <span class="warn">${irmaStats.unmatched.toLocaleString()} IRMA rows `+
             `matched no sample or product here and were not read.</span>` : '')
@@ -6099,12 +6068,11 @@ function refreshBand(){
    a region, so a codon query pulls tens of KB out of a 200 MB file. Both byte
    sources support that: File.slice() natively, and the dev server via Range.
 
-   (Details of an unpublished run were removed here.)
-
-
-
-
- */
+   Read filters are not a judgement call — LoFreq's DP4 pins them. Excluding
+   unmapped / secondary / QC-fail / duplicate and REQUIRING proper-pair
+   reproduces its ref and alt counts at the sampled sites, except where a read
+   carries a deletion, which LoFreq folds into DP and this reports separately. Anything looser and the pileup would
+   quietly disagree with the table printed beside it. */
 
 const BAM_SEQ='=ACMGRSVTWYHKDBN', BAM_CIG='MIDNSHP=X';
 const BAM_SKIP=0x704;   // unmapped | secondary | QC-fail | duplicate
@@ -6285,11 +6253,10 @@ function parseRecords(buf,from,refId,beg,end,out,need){
     out.push({pos,cig,seqOff:c,lSeq,qualOff:c+((lSeq+1)>>1),buf,flag});
   }
 }
-/* (Details of an unpublished run were removed here.)
-
-
-
- */
+/* Base and quality at a 0-based reference position.
+   '-' means the position is deleted in this read; null means not covered.
+   The CIGARs here carry heavy soft-clipping, so read offset is never ref offset
+   plus a constant — the walk is the only correct way to do this. */
 function baseAt(r,refPos){
   let rp=r.pos, qp=0;
   for(let k=0;k<r.cig.length;k++){
@@ -6310,13 +6277,13 @@ function baseAt(r,refPos){
   return null;
 }
 
-/* (Details of an unpublished run were removed here.)
-
-
-
-
-
-
+/* ---- one pass per segment ------------------------------------------------
+   The BAI cannot help here and it is worth being clear about why: its finest
+   bin is 16 kb and an influenza segment is 838-2280 bp, so every segment sits
+   inside a single bin and any query returns one chunk covering the whole
+   segment's reads, which on a deep segment is very large.
+   Narrowing that per query would mean re-inflating the same blocks for the
+   next codon.
 
    So the unit of work is the segment, done once and cached. A single pass
    accumulates per-position base counts (the pileup) and, for any codons asked
@@ -6393,9 +6360,9 @@ function consumeInto(buf,from,rid,S,codons,haps,wantCounts,meta){
   }
   return p;
 }
-/* (Details of an unpublished run were removed here.)
-
- */
+/* Base at a 0-based reference position, straight off the record. Soft-clipping
+   is heavy in these BAMs, so read offset is never reference offset plus a
+   constant. */
 function baseAtRec(buf,dv,pos,cigOff,nCig,seqOff,refPos){
   let rp=pos, qp=0;
   for(let k=0;k<nCig;k++){
@@ -6505,15 +6472,15 @@ async function bamCodonCounts(sample,segName,positions,onProgress){
 /* ============================================================ read pileup ==
    The reads themselves, one sample at a time, stacked the way IGV stacks them.
 
-   (Details of an unpublished run were removed here.)
-
-
-
-
-
-
-
-
+   THE DEPTH PROBLEM, AND WHAT IS DONE ABOUT IT. Depth on a real run can be very
+   high, and one segment can carry a very large number of reads. Keeping all of
+   them costs a lot of memory and produces a stack thousands of rows tall —
+   correct, unrenderable, and unreadable. So the stack is a STATED SAMPLE: reads are taken in
+   coordinate order, and whenever the store fills, every other stored read is
+   dropped and the stride doubles. The retained set is then exactly
+   {n : n mod stride = 0} — a systematic sample, uniform along the segment, with
+   no relationship to which allele a read carries. The ratio is drawn in the
+   gutter, never inferred.
 
    And the numbers are NOT sampled. The per-position base counts are folded in
    from every read that passes the filters, before any thinning, in the same
@@ -7155,8 +7122,8 @@ function draw(){
      so the view arrives showing it, and takes over the moment a row is picked. */
   else if(viewMode==='reads'&&readsSample!==null){ drawReads(bx,by,bw,bh,c0,c1); }
   else {
-  // (Details of an unpublished run were removed here.)
-  //
+  // Iterate the filtered CALL LIST, never the cell grid: the matrix is sparse
+  // and sampling columns would silently drop most of it.
   for(let i=0;i<7;i++) paths[i]=new Path2D();
   let drawn=0; // mirrored to __drawn so the header can read it in either mode
   for(let n=0;n<keep.length;n++){
@@ -7408,12 +7375,12 @@ function draw(){
       /* Assembly strip: one cell per segment, in SEG_ORDER, so cell k lines up
          with the same segment's region of the matrix to the right.
 
-         (Details of an unpublished run were removed here.)
-
-
-
-
- */
+         Monochrome on purpose. Every ramp in this app encodes allele frequency,
+         and a coloured strip beside those cells would read as more of the same
+         quantity; depth of assembly is a different axis entirely. Steps are
+         decades of reads because the spread between segments can be
+         enormous, so a linear scale would show
+         seven full cells and one that looks empty but is not. */
       if(segColW()){
         const rec=segCache.get(names[sm]);
         if(rec===undefined) wantSegCounts(names[sm]);
@@ -7566,13 +7533,13 @@ function draw(){
         : `${(window.__drawn||0).toLocaleString()} calls`);
 }
 
-/* (Details of an unpublished run were removed here.) */
-/*
-
-
-
-
-
+/* ---- detail panel ---------------------------------------------------------- */
+/* Frequency bar, absolute by default with a log toggle.
+   Absolute is the honest default — it is what people expect a percentage bar
+   to mean — but most calls sit under 5%, so on a linear axis they all draw a
+   sliver. That is exactly why the value is printed beside the bar: the number
+   carries the precision, the bar carries gross context, and log is one click
+   away when the low end needs resolving.
 
    Ticks, labels and fill all come from one marks array through fbPos(), which
    is what stops them drifting apart (they did once: evenly spaced labels on a
@@ -7607,19 +7574,19 @@ function legibleInk(fg){
   return c;
 }
 
-/* (Details of an unpublished run were removed here.)
-
-
-
- */
-/*
-
-
-
-
-
-
-
+/* FluMut subsection.
+   The key point, and the reason this is worth showing per variant: FluMut reads
+   the CONSENSUS, this table reads BELOW it. So a variant matching a marker is
+   not "FluMut already found this"; it is "this would create a known marker if
+   it rose". */
+/* FluMut's HA/NA markers are numbered for H5 and N1 specifically — the database
+   calls the proteins HA1-5 and NA-1. On any other subtype two things go wrong at
+   once: H3 and H5 HA1 differ in length and alignment, so the position is read
+   against the wrong ruler; and the proteins have diverged far enough that even a
+   correctly mapped residue need not carry the same meaning. Flumina drops these
+   rows by default (FLUMUT_KEEP_MISMATCHED_HA_NA), so anything reaching here on a
+   mismatched run is present because someone chose to keep it — and it has to say
+   so, or it reads exactly like the trustworthy internal-gene markers beside it.
 
    Subtype comes from the reference segment names. A bare A_HA carries none, and
    unconfirmed counts as mismatched rather than as a pass. */
@@ -7828,8 +7795,8 @@ function flumutSection(i){
    far more often than it would be a number. */
 function snpgenieSection(i){
   const head='<div class="psec">diversity · SNPGenie</div>';
-  // (Details of an unpublished run were removed here.)
-  //
+  // Filled by the .then in renderVariant once the codon table is parsed, so a
+  // large read never delays the panel appearing.
   return head+`<div id="snpnote" class="empty">reading codon table…</div>`;
 }
 function fillSNPGenie(i){
@@ -8379,10 +8346,10 @@ function renderIrma(el,row,col){
          c.frame==='identity'?' <span class="dim">(contig colinear)</span>':''}</dd>
      </dl>`+
     `<div class="verdict ${cls}"><b>${title}</b>${body}</div>`+
-    /* (Details of an unpublished run were removed here.)
-
-
- */
+    /* The join back to the table. Both directions are informative: a call the
+       callers ALSO have corroborates IRMA, and a change with nothing behind it
+       is the interesting case: such a residue has reads, but it is below the
+       floor in the BWA alignment. */
     `<dl class="dl" style="margin-top:10px">
        <dt>callers</dt><dd>${call
          ? `${esc(call.aa)} at ${(call.freq*100).toFixed(1)}% · depth ${call.depth.toLocaleString()}`
@@ -8455,11 +8422,10 @@ async function renderVariant(el,i){
   const refAA=V.ref[i]===255?'?':AAS[V.ref[i]], altAA=V.alt[i]===255?'?':AAS[V.alt[i]];
   const cur=curated.get(V.col[i]);
   const lowD=V.depth[i]<AS_MIN_DEPTH;   // the run's own depth floor, from config
-  // (Details of an unpublished run were removed here.)
-  /*
-
-
- */
+  // is this codon carrying more than one call in this sample?
+  /* One change, not one row: both callers firing at the same position is a
+     duplicate report, not two things happening in the codon. LoFreq wins the
+     representative slot because its frequency is the one that matches reads. */
   const mateBy=new Map();
   /* Picked up in the SAME pass rather than a second one: the fraction each
      fraction-caller reported for THIS exact change, so the panel can show the
@@ -8543,18 +8509,18 @@ async function renderVariant(el,i){
       <dt>caller</dt><dd>${CALLER[V.method[i]]}${
         afSource&&afSource[i]===1?' <span style="opacity:.6">· AF from LoFreq</span>':''}${
         isGenotypeAF(i)?' <span style="opacity:.6">· genotype</span>':''}${
-        /* (Details of an unpublished run were removed here.)
-
- */
+        /* Stated for every GATK4 row, not just the uncorroborated ones. When
+           every GATK4 record in a run is non-PASS, a reader who only saw it on
+           the odd one would reasonably assume the rest had passed. */
         (()=>{ const f=V.method[i]===M_GATK?gatkFilterOf(i):null;
           return f&&f!=='PASS'&&f!=='.'
             ? ` <span class="warn">· GATK4 FILTER ${esc(f)}</span>` : ''; })()}${
-        /* (Details of an unpublished run were removed here.)
-
-
-
-
- */
+        /* The same situation for iVar, and stated on the same terms. iVar's
+           PASS is its Fisher exact test against the sequencing error rate, and
+           like VariantFiltration it ANNOTATES rather than removes. A row that
+           failed its own caller's test
+           must not look identical to one that passed. Shown from the TSV where
+           it has been read, falling back to the pipeline's ivar_pass column. */
         (()=>{ if(V.method[i]!==M_IVAR) return '';
           const r=ivarRecOf(i);
           const p=r?r.pass:(V.ivarPass?V.ivarPass[i]:'');
@@ -8651,13 +8617,13 @@ async function renderVariant(el,i){
   // Multi-call codons get read off the BAM, replacing the provisional warning
   if(sameCodon>1) resolveCodon(i,codonMates);
 
-  /* (Details of an unpublished run were removed here.)
-
-
-
- */
-  //
-  //
+  /* How well this variant's own segment assembled. The strip shows the pattern
+     across the run; here the question is narrower and more useful — a call on a
+     segment that recovered a few thousand reads deserves less confidence than
+     the same call on one that recovered far more, and nothing else in the
+     panel knows that. */
+  // Kicked off, not awaited: the codon table is large and the panel must appear
+  // now. fillSNPGenie no-ops if the reader has already clicked elsewhere.
   ensureSNPGenie().then(()=>fillSNPGenie(i));
 
   if(segState==='ok') loadSegCounts(names[V.row[i]]).then(rec=>{
@@ -8693,12 +8659,12 @@ async function renderVariant(el,i){
           `different run than the one opened here.`;
     else if(V.method[i]===M_GATK){
       const flt=gatkFilterOf(i);
-      /* (Details of an unpublished run were removed here.)
-
-
-
-
- */
+      /* Two different situations were being given one explanation. A GATK4 call
+         that LoFreq also reported is the routine consensus-level case. A GATK4
+         call LoFreq never reported at all is not: those sit at very low depth
+         in the thinnest libraries, and LoFreq is not missing them for
+         want of sensitivity — it has no statistical power at that depth, which
+         is a different claim and points the opposite way. */
       why=`This is a GATK4 call and LoFreq never reported `+
           `<b>${esc(V.seg[i])}:${V.pos[i]}</b> at all. LoFreq's sensitivity is to `+
           `low-FREQUENCY alleles in well-covered positions — its power comes from `+
@@ -8767,12 +8733,12 @@ function renderSite(el,col){
   const unfiltered = viewMode==='nucleotides' && variantView==='consensus';
   let rows=[];
   if(unfiltered){
-    /* (Details of an unpublished run were removed here.)
-
-
-
-
- */
+    /* Both callers emit a row for the same change, so the raw table lists most
+       changes twice — the duplicate report that made many codons look
+       multi-call. Dedupe on position:alternative per sample, LoFreq taking the
+       representative slot because its frequency is the one that matches reads.
+       The filtered path never needed this because `keep` has usually already
+       thinned them; iterating V directly walks straight into it. */
     const by=new Map();
     for(let i=0;i<V.n;i++){
       if(V.col[i]!==col) continue;
@@ -8950,12 +8916,12 @@ function cellAt(cx,cy){
   const c0=Math.max(0,colAt(cx-P)), c1=Math.min(NC-1,colAt(cx+P+1));
   const r0=Math.max(0,Math.min(ra,rb)), r1=Math.min(NTvis-1,Math.max(ra,rb));
   if(c1<c0||r1<r0) return null;
-  /* (Details of an unpublished run were removed here.)
-
-
-
-
-
+  /* The consensus view paints from consVar, which buildConsensus fills from
+     EVERY call regardless of the filters — so hit-testing `cls` here asks a
+     different question from the one the reader clicked. At the default
+     nonsynonymous-only setting, many painted consensus cells were not
+     clickable: every synonymous change was inert, and showing synonymous
+     consensus changes is most of what this view is FOR.
 
      Exactly the split ntCellAt exists to fix, in the other viewer. Match what
      was painted, per the rule in renderSite. */
@@ -8977,12 +8943,12 @@ function cellAt(cx,cy){
       for(let c=c0;c<=c1;c++)
         if(painted(irmaSt[base+c])) return {irma:{row:sm, col:c}};
     }
-    /* (Details of an unpublished run were removed here.)
-
-
-
-
- */
+    /* Nothing painted under the pointer, but the EXACT cell still answers — with
+       no tolerance, so it can never steal a click from a mark next door.
+       Without this the thin residues would be unreachable: they are deliberately
+       not painted, and "panel only" has to
+       mean the panel can actually be opened on one. It also makes a gap
+       explain itself instead of just looking empty. */
     if(sme!==undefined&&ce>=0&&ce<NC) return {irma:{row:sme, col:ce}};
     return null;
   }
@@ -9008,14 +8974,14 @@ function cellAt(cx,cy){
 }
 /* Hit-test for the nucleotides view, which cannot use cellAt.
 
-   (Details of an unpublished run were removed here.)
-
-
-
-
-
-
-
+   cellAt searches `cls` — the FILTERED call grid — while this view paints from
+   consVar, which buildConsensus fills from every call in the table on purpose:
+   a sample's consensus residue is a fact about the sample, not about the
+   filters you happen to be looking through. The two disagree by exactly the
+   calls the filters remove, so a click on a plainly visible base selected
+   nothing whenever that call was filtered out. At the default
+   nonsynonymous-only setting many painted cells were not clickable — every
+   synonymous change was inert, which is most of what this view is FOR.
 
    So hit-test what is drawn. No pixel tolerance: the cells here are at least
    3 px wide (below that the view draws codon marks and selNt is not offered),
@@ -9043,15 +9009,14 @@ function readsColAt(cx){
   const c=Math.floor(scrollCol+(cx-NAMES_W)/cw);
   return (c>=0&&c<NC)?c:-1;
 }
-/* (Details of an unpublished run were removed here.)
-
-
-
-
-
-
-
-
+/* EVERY call the focus sample has, unfiltered, by column. The filtered grid is
+   the wrong thing to hit-test in this view and the reason is worth stating,
+   because it is the third appearance of one bug: the pile-up is painted from
+   the BAM, which knows nothing about the call filters, so a synonymous change
+   sits on screen as a coloured column of reads while `vidx` has nothing at that
+   column and the click resolves to a bare site. At the default
+   nonsynonymous-only setting many calls were not clickable. It is the same
+   split that ntCellAt and the consensus branch of cellAt were written to fix.
 
    Built once per focus sample. It does not depend on the filters, so it does
    not rebuild with them. */
@@ -9114,14 +9079,13 @@ function readsTip(cx,cy){
     if(vi<0) return null;
     const p=PROD.get(V.prod[vi]);
     const refAA=V.ref[vi]===255?'?':AAS[V.ref[vi]], altAA=V.alt[vi]===255?'?':AAS[V.alt[vi]];
-    /* (Details of an unpublished run were removed here.)
-
-
-
-
-
-
- */
+    /* "caller depth", not "depth" — and the coverage strip below says "BAM
+       depth" for the same reason. This is the only view where both numbers are
+       on screen at once, and they are not the same quantity: the caller's is
+       what its own filters left it, while the strip counts every read that
+       passed the BAM filters. Two numbers with the same name from different
+       files is this project's recurring failure; here it would be a tooltip and
+       a bar chart disagreeing with nothing on screen to explain it. */
     return `<b>${esc(sample)}</b> · ${esc(p?p.product:'?')} `+
       `<b>${esc(refAA)}${V.aapos[vi]}${esc(altAA)}</b><br>`+
       `<span class="k">freq</span> ${(V.freq[vi]*100).toFixed(2)}%  `+
@@ -10690,11 +10654,11 @@ function setViewMode(m){
   // view OR the pile-up in nucleotides. Anywhere else selCol is the codon and a
   // stored third would narrow the next selection band silently.
   if(!ntAlphabet()) selNt=null;
-  // (Details of an unpublished run were removed here.)
-  //
-  //
-  //
-  //
+  // Not persisted: the view always opens at amino acids · low frequency — see
+  // the comment beside that default. A key nothing reads only invites a future
+  // reader to believe it means something.
+  // The codon table is large, so it is read on first use of this view rather
+  // than at open. schedule() again on arrival — the first frame draws empty.
   if(m==='selection'&&!snpCells) ensureSNPGenie().then(schedule);
   placeModeSwitch(); schedule();
 }
@@ -10773,18 +10737,18 @@ document.getElementById('bandmode').onchange=e=>{
 };
 document.getElementById('vvR').addEventListener('click',e=>{
   const b=e.target.closest('button'); if(b&&!b.disabled) setVariantView(b.dataset.vv); });
-/* (Details of an unpublished run were removed here.)
+/* 'selection' is deliberately NOT restorable — it reads a large codon table, and
+   reopening the app straight into a long load is a worse default than starting
+   where every run can start. Nucleotides costs nothing extra, so it restores. */
+/* The view is NOT restored. Every run opens in amino acids · low frequency.
 
- */
-/*
-
-   (Details of an unpublished run were removed here.)
-
-
-
-
-
-
+   `selection` was already excluded for a concrete reason — it reads a large
+   codon table and reopening straight into a long load is a bad default — and
+   the same argument generalises: the view is a property of what you are doing
+   right now, not of the app. Reopening into whatever mode a previous session
+   happened to end in means the first thing on screen is not the thing most runs
+   should start from, and a consensus or nucleotides view can look empty on a
+   run whose calls are all sub-consensus, which reads as a failed load.
 
    Amino acids · low frequency is the broadest view — every call above the
    filters, in the alphabet the curated database, FluMut and the panel all

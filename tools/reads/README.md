@@ -1,6 +1,6 @@
 # Read-level probes
 
-Written 2026-08-13 to settle item 0d — six low-frequency calls that IRMA made and
+Written 2026-08-13 to settle item 0d — low-frequency calls that IRMA made and
 that none of LoFreq, iVar, or GATK4 reported. They read a run directory in place and
 print summaries. None of them writes into the run, except `depth_band.py`, which
 takes an explicit output path.
@@ -22,37 +22,39 @@ directory (the one that holds `BAM_files/`, `IRMA_results/`, and `reference.fa`)
 
 ## Two things that produce convincing wrong answers
 
-(Details of an unpublished run were removed here.)
+**Read names.** IRMA appends the fastq comment as `_3:N:0:INDEX` (the `3` is
+its marker for a merged pair), and BWA keeps the bare Illumina name. If you compare
+them without normalisation, you find none of the reads, and this looks like a result. Every
+script here splits on `_` and takes the first field. Illumina names contain no
+underscore.
 
-
-
-
-
-(Details of an unpublished run were removed here.)
-
-
-
-
+**Negative region starts.** A window built as `pos-400` goes below 1 for a
+position near a segment start. Then `samtools view` returns nothing, and the empty
+result looks like a clean negative — "BWA does nothing with these reads". For a short
+time, it produced exactly that for calls near a segment start. Now both
+`clip_audit.py` and `junction_test.py` clamp to 1.
 
 ## Reproducing item 0d
 
 ```bash
 RUN=~/path/to/Analysis_New/WGS
+# One call per line, tab-separated: sample, locus, position, ref, alt.
+# Keep this file outside the repository.
+CALLS=~/path/to/calls.tsv
 
-python3 junction_test.py "$RUN"
+python3 junction_test.py "$RUN" "$CALLS"
 
-(Details of an unpublished run were removed here.)
+python3 irma_allele_names.py "$RUN/IRMA_results/<sample>/A_PA.bam" A_PA <position> <alt> > /tmp/names.txt
+python3 clip_audit.py "$RUN/BAM_files/<sample>/final_mapped_reads.bam" \
+    "$RUN/reference.fa" A_PA <position> <alt> /tmp/names.txt
 
-
-
-(Details of an unpublished run were removed here.)
-
+python3 pileup_views.py "$RUN/BAM_files/<sample>/final_mapped_reads.bam" \
+    "$RUN/reference.fa" A_PB2:<position>-<position> 30
 
 python3 depth_band.py "$RUN" "$RUN/depth_profiles/mindepth_blind_band.tsv"
 ```
 
-(Details of an unpublished run were removed here.)
-
+`depth_band.py` reads every sample, so it takes a long time on a large run.
 
 ## Reproducing the LoFreq `-B` measurement
 
@@ -84,16 +86,12 @@ python3 baq_support.py  "$RUN" "$OUT" $(tr '\n' ' ' < "$OUT/samples.txt")
 python3 baq_baseline.py "$RUN" "$OUT" $(tr '\n' ' ' < "$OUT/samples.txt")
 ```
 
-(Details of an unpublished run were removed here.)
-
-
-
+The two scripts print the counts that this comparison needs.
 
 `--entrypoint bash` is required: the image's entrypoint is the Flumina launcher.
 So a bare `docker run ... lofreq` prints the launcher's help and does not run
 LoFreq.
 
-(Details of an unpublished run were removed here.)
-
-
-
+**Indel positions come from iVar's TSV, never from the GATK4 indel VCF.** GATK4
+reports almost no indels, because it is a genotype caller and does not see indels
+below genotype frequency. If you use it, BAQ looks like it protects against nothing.

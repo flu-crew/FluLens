@@ -12,14 +12,14 @@ a BAM honest to that is ~86 MB for ONE sample. A4's DP is 118-161, which is
 Everything here is derived from files already in example_run, so the BAM cannot
 drift from the tables beside it:
 
-  (Details of an unpublished run were removed here.)
-
-
-
-
-
-
-
+  depth   IRMA's own per-base coverage table, scaled by BWA_FACTOR. The
+          pile-up's BAM depth SHOULD sit above the caller's -- the callers
+          filter, the BAM does not.
+  alleles every LoFreq call, at its own AF, split across strands by its own
+          DP4. The strand-balance panel therefore agrees with the VCF instead
+          of being a second opinion about it.
+  segments whichever segments IRMA assembled, so A4_D3 and A4_D5 stay at 6 of 8
+          and the pile-up's absent-segment path is reachable.
 
 Usage:  python3 tools/make_example_bams.py [--out example_run]
 Needs samtools on PATH. Deterministic: same seed, same bytes.
@@ -120,14 +120,14 @@ def qual_profile(n, rng):
 def depth_target(irma, calls, seg_len):
     """The per-base depth to aim for.
 
-    (Details of an unpublished run were removed here.)
-
-
-
-
-
-
-"""
+    IRMA's shape scaled up, floored by what the caller claims. The two sources
+    in example_run were generated independently and disagree: many of A4's
+    calls carry a LoFreq DP far above IRMA's scaled depth. Left
+    alone, the pile-up would print "caller depth 579" over a coverage strip
+    reading 140 and look like the depth bug this app has already had twice.
+    The BAM has to be the wider number, since the callers filter and it does
+    not, so each call raises a triangular bump around itself rather than a
+    step -- a rectangular floor would draw a cliff in the coverage strip."""
     target = [min(DEPTH_CAP, d * BWA_FACTOR) for d in irma]
     for pos, (_, _, _, _, _, dp) in calls.items():
         need = min(DEPTH_CAP, dp * CALLER_HEADROOM)
@@ -219,10 +219,9 @@ def build_mate(seq, ref, start, length, calls, rng, is_rev):
                 quals[qi] = max(quals[qi], int(min(41, max(28, rng.gauss(35, 3)))))
         elif rng.random() < ERR_RATE:
             b = rng.choice([x for x in "ACGT" if x != b])
-            # (Details of an unpublished run were removed here.)
-            #
-            #
-            #
+            # An error is a low-quality base, with a thin tail into the middle
+            # band rather than a flat 10-19 block. In real data the middle band
+            # holds only a minority of the mismatches, not a third of them.
             quals[qi] = int(min(29, max(6, rng.gauss(14, 4.5))))
         bases.append(b)
         rp += 1

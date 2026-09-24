@@ -6,10 +6,10 @@ every record with those names in the BWA BAM and reports what BWA did with
 them: aligned through the position (with which base), soft-clipped over it,
 duplicate-flagged, placed elsewhere, or unmapped.
 
-(Details of an unpublished run were removed here.)
-
-
-
+IRMA appends the fastq comment to the read name as `_3:N:0:INDEX` (the 3 is its
+marker for a merged pair), and BWA keeps the bare Illumina name, which never
+contains an underscore. Comparing them unnormalised finds none of the reads and
+looks like a real result.
 
 usage: trace_reads.py <irma_bam> <bwa_bam> <contig> <pos1> <minor_allele>
 """

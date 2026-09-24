@@ -22,12 +22,12 @@ use tauri::Manager;
 
 /// Directories that are pipeline scratch, never results.
 ///
-/// (Details of an unpublished run were removed here.)
-///
-///
-///
-///
-///
+/// Nextflow's work/ sits inside the run directory and holds a staged copy of
+/// nearly everything, including many copies of reference.fa and of the VCFs.
+/// Every lookup in the app takes the first path that matches, so those
+/// copies do not sit inert, they compete: reference_gtf was read twice and PB2
+/// came out as 1518 codons instead of 759. The browser path filters these in
+/// indexFiles(); this is the same rule, applied before the paths are ever sent.
 fn is_scratch(rel: &str) -> bool {
     rel.split('/').any(|p| p == "work" || p == ".nextflow")
 }

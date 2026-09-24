@@ -113,10 +113,10 @@ something sets `.value`. So mark the default option `selected` in the HTML and
 keep it in step with the JS default. If you do not, the control disagrees with the
 view, which is worse than one of them alone being wrong.
 
-(Details of an unpublished run were removed here.)
-
-
-
+**Never do per-row or per-column work inside the draw loop.** The matrix is
+sparse. Iterate the call list, not the grid. If you sample every Nth column — like
+a dense-alignment renderer — you draw a fraction of the calls, and it still looks
+correct.
 
 **`requestAnimationFrame` never fires in a hidden tab.** Any await that gives the
 browser a frame to paint must also race a timeout. If it does not, a run opened in a

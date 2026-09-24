@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Do the six IRMA-only calls sit at read/fragment junctions?
+"""Do IRMA-only calls sit at read/fragment junctions?
 
 For each call, two questions asked of the two alignments:
 
@@ -11,10 +11,14 @@ For each call, two questions asked of the two alignments:
   BWA   — of the reads IRMA counts as the minority allele, how many does BWA
           soft-clip over the position rather than align through it?
 
-(Details of an unpublished run were removed here.)
+Run the two together. A call can show no enrichment on the first test and
+still be clear on the second.
 
+usage: junction_test.py <run_dir> <calls.tsv>
 
-usage: junction_test.py <run_dir>
+calls.tsv has one call per line, tab-separated: sample, locus, position,
+reference base, alternative base. Lines whose position is not a number (a
+header or a comment) are skipped.
 """
 import re
 import subprocess
@@ -23,9 +27,18 @@ import os
 
 CIG = re.compile(r'(\d+)([MIDNSHP=X])')
 
-CALLS = [
-    # (Calls from an unpublished run were removed here.)
-]
+
+def read_calls(path):
+    """Read the calls to test from a tab-separated file."""
+    calls = []
+    with open(path) as fh:
+        for line in fh:
+            f = line.rstrip('\n').split('\t')
+            if len(f) < 5 or not f[2].strip().isdigit():
+                continue
+            calls.append((f[0].strip(), f[1].strip(), int(f[2]),
+                          f[3].strip().upper(), f[4].strip().upper()))
+    return calls
 
 
 def probe(f, t):
@@ -72,11 +85,14 @@ def view(bam, region, flags=None):
 
 
 def main():
+    if len(sys.argv) != 3:
+        sys.exit('usage: junction_test.py <run_dir> <calls.tsv>')
     run = sys.argv[1]
+    calls = read_calls(sys.argv[2])
     print(f'{"sample":<8} {"locus":<9} {"pos":>6} {"chg":>5} '
           f'{"IRMA n_alt":>10} {"alt ends<=10bp":>15} {"ref ends<=10bp":>15} '
           f'{"enrich":>7} {"BWA clips alt":>14} {"BWA aligns alt":>15}')
-    for sample, locus, pos, refb, alt in CALLS:
+    for sample, locus, pos, refb, alt in calls:
         ibam = os.path.join(run, 'IRMA_results', sample, f'{locus}.bam')
         bbam = os.path.join(run, 'BAM_files', sample, 'final_mapped_reads.bam')
         alt_d, ref_d, alt_names = [], [], set()

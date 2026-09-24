@@ -4,21 +4,20 @@
 For every call that appears without BAQ and not with it, ask three independent
 questions:
 
-  (Details of an unpublished run were removed here.)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+  iVar        does the run's own iVar TSV call the same position+ALT? iVar
+              already runs with -B, so agreement is partly shared method, but
+              its statistics and its PASS test are its own.
+  GATK4       does HaplotypeCaller call it? Reported but NOT evidence either
+              way at these frequencies: GATK4 is a genotype caller and does not
+              call 3% variants at all, so a 0% agreement rate here means
+              "wrong instrument", not "unsupported".
+  indel       distance to the nearest indel, taken from iVar's TSV and NOT from
+              the GATK4 indel VCF. That distinction decides the answer: GATK4
+              reports almost no indels and iVar reports many, because only one
+              of them detects indels below genotype frequency. BAQ exists to
+              suppress spurious SNPs beside indels, so a -B-only call sitting on
+              one is exactly the failure mode, and the GATK4 file would have said
+              there was nothing to sit on.
 
 usage: baq_support.py <run_dir> <vcf_dir> <sample> [sample ...]
 """

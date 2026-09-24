@@ -1,12 +1,10 @@
 #!/usr/bin/env python3
 """How much usable depth BAQ costs, as a function of distance from a contig edge.
 
-(Details of an unpublished run were removed here.)
-
-
-
-
-
+BAQ's HMM has no flanking reference to work with at a contig edge, so it
+collapses the qualities of reads hanging off it. The loss is largest at the
+start of a segment and falls to nothing further in, which is the same shape as
+LoFreq's call distribution along the segment.
 
 usage: baq_ramp.py <bam> <ref_fa> <contig> <end_pos>
 """

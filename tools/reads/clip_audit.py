@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """Audit the soft-clipped tails that hide a minority allele from the callers.
 
-(Details of an unpublished run were removed here.)
-
-
-
-
-
+For every primary, non-duplicate BWA record whose soft clip covers `target`,
+lay the clipped tail back down on the reference at the coordinates it would
+occupy and count how well it matches. A tail that matches everywhere except
+the variant is sequence BWA declined to align; a tail that is heavily mismatched
+at high base quality is the far side of a template switch, and the "variant" is
+the last base before the junction.
 
 Pass a name file (one read name per line, IRMA's `_3:N:0:` suffix optional) to
 restrict the audit to one caller's read set. Without it you get every read at
